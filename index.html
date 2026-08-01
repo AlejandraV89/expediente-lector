@@ -16,7 +16,7 @@
     --text-on-ink:#e8e3d3;
     --text-muted:#9a9686;
     --amber:#c9722e;
-    --amber-dark:#321f11;
+    --amber-dark:#8f4f1f;
     --teal:#3e7c7c;
     --red:#a63a3a;
     --border-ink: rgba(232,227,211,0.15);
@@ -365,7 +365,7 @@
       </div>
 
       <div class="note-box">
-        Prototipo de investigación doctoral de Greisy Giraldo · Los datos de esta sesión no se guardan al cerrar la página.
+        Prototipo de investigación doctoral · Los datos de esta sesión no se guardan al cerrar la página.
       </div>
     </div>
   </div>
@@ -401,6 +401,16 @@ Reglas del flujo de cada caso:
    - Si falla una SEGUNDA vez en la misma pregunta: ahora sí explica la respuesta correcta de forma breve y clara, sin regañar, y luego presenta el siguiente caso.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
+
+REGLA DE COHERENCIA — OBLIGATORIA:
+El campo "message" y el campo "state_update" deben coincidir siempre. Antes de responder, revisa tu propio mensaje:
+- Si en "message" celebras un acierto o dices que el estudiante ganó puntos/experiencia, entonces "xp_gain" de la competencia correspondiente DEBE ser mayor que 0 en ese mismo turno. Nunca narres una ganancia de experiencia sin reflejarla en xp_gain.
+- Si en "message" anuncias o mencionas una credencial nueva (con cualquier frase, ej. "credencial desbloqueada", "te has ganado algo", "nueva insignia"), entonces "badge_earned" DEBE contener el nombre exacto de esa credencial en ese mismo turno. Nunca anuncies una credencial en el texto sin llenarla en el campo.
+- Si "message" no menciona ninguna credencial nueva, "badge_earned" debe ser null.
+- Nunca narres un logro en el texto que no esté reflejado en los datos de "state_update" del mismo turno.
+
+REGLA DE FORMATO DE TEXTO — OBLIGATORIA:
+El campo "message" se muestra tal cual al estudiante, SIN renderizar Markdown. Por lo tanto, no uses asteriscos para negrita (**texto**), no uses numerales para títulos (# texto), no uses guiones bajos para cursiva, ni ningún otro símbolo de formato Markdown. Escribe el texto plano, usando saltos de línea simples y mayúsculas o comillas si necesitas dar énfasis (ej. "CREDENCIAL DESBLOQUEADA" en vez de "**CREDENCIAL DESBLOQUEADA**").
 
 FORMATO DE RESPUESTA — MUY IMPORTANTE:
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin bloques de código markdown. Estructura exacta:
