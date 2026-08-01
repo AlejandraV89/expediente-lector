@@ -395,12 +395,13 @@ Reglas del flujo de cada caso:
    - inferencial: relacionar partes del texto para deducir algo no dicho explícitamente.
    - critico: evaluar, contrastar o tomar postura frente al contenido del texto.
    Los distractores (opciones incorrectas) deben representar errores típicos de lectura (ej: literal mal leído, generalización apresurada, opinión no sustentada), no ser absurdos.
-3. Cuando el estudiante responda, evalúa si acertó.
-   - Si acierta: celebra brevemente en personaje, explica en una frase por qué esa era la respuesta correcta, otorga xp_gain en la competencia trabajada (10 a 15 puntos), y presenta el siguiente caso (nuevo texto + pregunta).
-   - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. Haz una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). No avances de caso todavía.
-   - Si falla una SEGUNDA vez en la misma pregunta: ahora sí explica la respuesta correcta de forma breve y clara, sin regañar, y luego presenta el siguiente caso.
+3. Cuando el estudiante responda, evalúa si acertó. IMPORTANTE: cada turno hace UNA sola cosa — o da retroalimentación del caso actual, o presenta un caso nuevo — nunca las dos cosas en el mismo mensaje.
+   - Si acierta: en este turno da SOLO la retroalimentación (celebra brevemente en personaje, explica en una frase por qué esa era la respuesta correcta, refleja la ganancia de xp en la competencia trabajada). NO presentes el siguiente caso todavía. "options" debe ser null y state_update.case_solved debe ser true.
+   - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. Haz SOLO una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). "options" debe ser null y state_update.case_solved debe ser false. No avances de caso todavía.
+   - Si falla una SEGUNDA vez en la misma pregunta: en este turno explica SOLO la respuesta correcta de forma breve y clara, sin regañar. NO presentes el siguiente caso todavía. "options" debe ser null y state_update.case_solved debe ser true.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
+6. Cuando recibas un mensaje del sistema indicando que el estudiante ya vio la retroalimentación y está listo para continuar (por ejemplo: "Continuemos con el siguiente caso."), preséntale un caso COMPLETAMENTE NUEVO siguiendo las reglas 1 y 2 (texto + pregunta + opciones). En este turno, state_update.case_solved debe ser false y xp_gain en 0 (el caso anterior ya se contabilizó en el turno de retroalimentación).
 
 REGLA DE COHERENCIA — OBLIGATORIA:
 El campo "message" y el campo "state_update" deben coincidir siempre. Antes de responder, revisa tu propio mensaje:
@@ -593,24 +594,38 @@ async function callClaude(userText){
   return parsed;
 }
 
-async function sendTurn(userText){
+async function sendTurn(userText, opts={}){
   composer.style.display = 'none';
-  if(userText && userText.trim().length > 0 && userText !== '__inicio__'){
+  const silent = !!opts.silent;
+  if(!silent && userText && userText.trim().length > 0 && userText !== '__inicio__'){
     addMessage(userText, 'user');
   }
-  statusLine.textContent = 'Detective Vega está pensando...';
+  statusLine.textContent = silent ? 'Detective Vega prepara el siguiente caso...' : 'Detective Vega está pensando...';
   sendBtn.disabled = true;
 
   try{
     const parsed = await callClaude(userText === '__inicio__' ? 'Quiero abrir mi primer caso.' : userText);
     addMessage(parsed.message || '(sin contenido)', 'bot');
-    if(parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0){
-      renderOptions(parsed.options);
-    } else {
-      composer.style.display = 'flex';
-    }
     applyStateUpdate(parsed.state_update);
-    statusLine.textContent = 'esperando tu respuesta';
+
+    const hasOptions = parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0;
+    const caseJustSolved = parsed.state_update && parsed.state_update.case_solved === true;
+
+    if(hasOptions){
+      renderOptions(parsed.options);
+      statusLine.textContent = 'esperando tu respuesta';
+    } else if(caseJustSolved){
+      // Fue un turno de retroalimentación (acierto o explicación tras 2do fallo).
+      // Esperamos un momento para que el estudiante lea, y pedimos el siguiente caso
+      // como un turno aparte, para que quede como un mensaje nuevo al hacer scroll.
+      statusLine.textContent = 'siguiente caso en un momento...';
+      setTimeout(() => sendTurn('Continuemos con el siguiente caso.', { silent: true }), 1400);
+    } else {
+      // Fue una pregunta guía (retroalimentación socrática tras el primer fallo):
+      // el estudiante debe responder por texto libre.
+      composer.style.display = 'flex';
+      statusLine.textContent = 'esperando tu respuesta';
+    }
   } catch(err){
     addSystemNote('Hubo un problema de conexión. Intenta enviar tu respuesta de nuevo. (' + err.message + ')');
     composer.style.display = 'flex';
