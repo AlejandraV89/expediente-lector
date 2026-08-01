@@ -395,29 +395,28 @@ Reglas del flujo de cada caso:
    - inferencial: relacionar partes del texto para deducir algo no dicho explícitamente.
    - critico: evaluar, contrastar o tomar postura frente al contenido del texto.
    Los distractores (opciones incorrectas) deben representar errores típicos de lectura (ej: literal mal leído, generalización apresurada, opinión no sustentada), no ser absurdos.
-3. Cuando el estudiante responda, evalúa si acertó. IMPORTANTE: cada turno hace UNA sola cosa — o da retroalimentación del caso actual, o presenta un caso nuevo — nunca las dos cosas en el mismo mensaje.
-   - Si acierta: en este turno da SOLO la retroalimentación (celebra brevemente en personaje, explica en una frase por qué esa era la respuesta correcta, refleja la ganancia de xp en la competencia trabajada). NO presentes el siguiente caso todavía. "options" debe ser null y state_update.case_solved debe ser true.
-   - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. Haz SOLO una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). "options" debe ser null y state_update.case_solved debe ser false. No avances de caso todavía.
-   - Si falla una SEGUNDA vez en la misma pregunta: en este turno explica SOLO la respuesta correcta de forma breve y clara, sin regañar. NO presentes el siguiente caso todavía. "options" debe ser null y state_update.case_solved debe ser true.
+3. Cuando el estudiante responda, evalúa si acertó:
+   - Si acierta: en el campo "feedback" celebra brevemente en personaje y explica en una frase por qué esa era la respuesta correcta, reflejando la ganancia de xp en la competencia trabajada. Además, en ese MISMO turno, incluye en el campo "case_text" el siguiente caso completo (nuevo texto + pregunta) con sus "options". state_update.case_solved = true.
+   - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. En el campo "feedback" incluye SOLO una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). Deja "case_text" y "options" en null — no avances de caso todavía. state_update.case_solved = false.
+   - Si falla una SEGUNDA vez en la misma pregunta: en el campo "feedback" explica la respuesta correcta de forma breve y clara, sin regañar. En ese MISMO turno, incluye en "case_text" el siguiente caso completo con sus "options". state_update.case_solved = true.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
-6. Cuando recibas un mensaje del sistema indicando que el estudiante ya vio la retroalimentación y está listo para continuar (por ejemplo: "Continuemos con el siguiente caso."), preséntale un caso COMPLETAMENTE NUEVO siguiendo las reglas 1 y 2 (texto + pregunta + opciones). En este turno, state_update.case_solved debe ser false y xp_gain en 0 (el caso anterior ya se contabilizó en el turno de retroalimentación).
 
 REGLA DE COHERENCIA — OBLIGATORIA:
-El campo "message" y el campo "state_update" deben coincidir siempre. Antes de responder, revisa tu propio mensaje:
-- Si en "message" celebras un acierto o dices que el estudiante ganó puntos/experiencia, entonces "xp_gain" de la competencia correspondiente DEBE ser mayor que 0 en ese mismo turno. Nunca narres una ganancia de experiencia sin reflejarla en xp_gain.
-- Si en "message" anuncias o mencionas una credencial nueva (con cualquier frase, ej. "credencial desbloqueada", "te has ganado algo", "nueva insignia"), entonces "badge_earned" DEBE contener el nombre exacto de esa credencial en ese mismo turno. Nunca anuncies una credencial en el texto sin llenarla en el campo.
-- Si "message" no menciona ninguna credencial nueva, "badge_earned" debe ser null.
+Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Antes de responder, revisa tu propia respuesta:
+- Si en "feedback" celebras un acierto o dices que el estudiante ganó puntos/experiencia, entonces "xp_gain" de la competencia correspondiente DEBE ser mayor que 0 en ese mismo turno.
+- Si en "feedback" anuncias o mencionas una credencial nueva, entonces "badge_earned" DEBE contener el nombre exacto de esa credencial en ese mismo turno. Si no mencionas ninguna credencial, "badge_earned" debe ser null.
 - Nunca narres un logro en el texto que no esté reflejado en los datos de "state_update" del mismo turno.
 
 REGLA DE FORMATO DE TEXTO — OBLIGATORIA:
-El campo "message" se muestra tal cual al estudiante, SIN renderizar Markdown. Por lo tanto, no uses asteriscos para negrita (**texto**), no uses numerales para títulos (# texto), no uses guiones bajos para cursiva, ni ningún otro símbolo de formato Markdown. Escribe el texto plano, usando saltos de línea simples y mayúsculas o comillas si necesitas dar énfasis (ej. "CREDENCIAL DESBLOQUEADA" en vez de "**CREDENCIAL DESBLOQUEADA**").
+Los campos "feedback" y "case_text" se muestran tal cual al estudiante, SIN renderizar Markdown. No uses asteriscos para negrita, no uses numerales para títulos, no uses guiones bajos para cursiva. Escribe el texto plano; usa mayúsculas o comillas si necesitas dar énfasis.
 
 FORMATO DE RESPUESTA — MUY IMPORTANTE:
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin bloques de código markdown. Estructura exacta:
 {
-  "message": "texto en personaje que se muestra al estudiante (incluye el texto/pista y la pregunta si aplica, o la retroalimentación socrática, o la explicación)",
-  "options": ["A) ...", "B) ...", "C) ...", "D) ..."] o null si este turno no presenta una pregunta de opción múltiple nueva,
+  "feedback": "texto de retroalimentación sobre la respuesta anterior del estudiante (celebración+explicación, pregunta guía, o explicación de la respuesta correcta), o null si este turno no incluye retroalimentación (por ejemplo, el primer caso de toda la sesión)",
+  "case_text": "texto completo del caso nuevo (pista + pregunta), o null si este turno no presenta un caso nuevo todavía (por ejemplo, cuando estás haciendo una pregunta guía tras un primer fallo)",
+  "options": ["A) ...", "B) ...", "C) ...", "D) ..."] o null si "case_text" es null,
   "state_update": {
     "xp_gain": {"literal": 0, "inferencial": 0, "critico": 0},
     "competency_focus": "literal" | "inferencial" | "critico" | null,
@@ -451,12 +450,18 @@ function scrollThread(){
   threadEl.scrollTop = threadEl.scrollHeight;
 }
 
-function addMessage(text, cls){
+function addMessage(text, cls, opts={}){
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
   div.textContent = text;
   threadEl.appendChild(div);
-  scrollThread();
+  if(opts.scrollToTop){
+    // Deja la vista justo al inicio de este mensaje nuevo (para leer el feedback
+    // antes de que el caso siguiente, más abajo, entre en la vista).
+    div.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if(opts.scrollToBottom !== false){
+    scrollThread();
+  }
   return div;
 }
 
@@ -484,7 +489,6 @@ function renderOptions(options){
     wrap.appendChild(btn);
   });
   threadEl.appendChild(wrap);
-  scrollThread();
 }
 
 function updateBoard(){
@@ -585,47 +589,59 @@ async function callClaude(userText){
     parsed = JSON.parse(raw);
   } catch(e){
     // Si el modelo no devolvió JSON limpio, lo mostramos igual como mensaje plano
-    parsed = { message: raw, options: null, state_update: null };
+    parsed = { feedback: raw, case_text: null, options: null, state_update: null };
   }
 
+  // Para el historial que le mandamos de vuelta al modelo, unimos feedback + caso
+  // en un solo texto (el modelo sí necesita ver su propio turno anterior completo).
+  const assistantSummary = [parsed.feedback, parsed.case_text].filter(Boolean).join('\n\n');
   state.history.push({ role: 'user', content: userText });
-  state.history.push({ role: 'assistant', content: parsed.message || raw });
+  state.history.push({ role: 'assistant', content: assistantSummary || raw });
 
   return parsed;
 }
 
-async function sendTurn(userText, opts={}){
+async function sendTurn(userText){
   composer.style.display = 'none';
-  const silent = !!opts.silent;
-  if(!silent && userText && userText.trim().length > 0 && userText !== '__inicio__'){
+  if(userText && userText.trim().length > 0 && userText !== '__inicio__'){
     addMessage(userText, 'user');
   }
-  statusLine.textContent = silent ? 'Detective Vega prepara el siguiente caso...' : 'Detective Vega está pensando...';
+  statusLine.textContent = 'Detective Vega está pensando...';
   sendBtn.disabled = true;
 
   try{
     const parsed = await callClaude(userText === '__inicio__' ? 'Quiero abrir mi primer caso.' : userText);
-    addMessage(parsed.message || '(sin contenido)', 'bot');
-    applyStateUpdate(parsed.state_update);
 
+    const hasFeedback = !!parsed.feedback;
+    const hasCase = !!parsed.case_text;
     const hasOptions = parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0;
-    const caseJustSolved = parsed.state_update && parsed.state_update.case_solved === true;
+
+    if(hasFeedback){
+      // El feedback es lo primero que debe ver el estudiante: el scroll se queda aquí.
+      addMessage(parsed.feedback, 'bot', { scrollToTop: true });
+    }
+    if(hasCase){
+      // El caso nuevo se agrega DEBAJO, sin mover el scroll — el estudiante lo
+      // encuentra al bajar por su cuenta, después de leer el feedback.
+      addMessage(parsed.case_text, 'bot', { scrollToBottom: false });
+    }
+    if(!hasFeedback && !hasCase){
+      addMessage('(sin contenido)', 'bot');
+    }
 
     if(hasOptions){
       renderOptions(parsed.options);
-      statusLine.textContent = 'esperando tu respuesta';
-    } else if(caseJustSolved){
-      // Fue un turno de retroalimentación (acierto o explicación tras 2do fallo).
-      // Esperamos un momento para que el estudiante lea, y pedimos el siguiente caso
-      // como un turno aparte, para que quede como un mensaje nuevo al hacer scroll.
-      statusLine.textContent = 'siguiente caso en un momento...';
-      setTimeout(() => sendTurn('Continuemos con el siguiente caso.', { silent: true }), 1400);
+      if(!hasFeedback){
+        // No hubo feedback que proteger en este turno (ej. el primer caso de la sesión):
+        // sí llevamos la vista hasta las opciones nuevas.
+        scrollThread();
+      }
     } else {
-      // Fue una pregunta guía (retroalimentación socrática tras el primer fallo):
-      // el estudiante debe responder por texto libre.
       composer.style.display = 'flex';
-      statusLine.textContent = 'esperando tu respuesta';
     }
+
+    applyStateUpdate(parsed.state_update);
+    statusLine.textContent = 'esperando tu respuesta';
   } catch(err){
     addSystemNote('Hubo un problema de conexión. Intenta enviar tu respuesta de nuevo. (' + err.message + ')');
     composer.style.display = 'flex';
