@@ -320,16 +320,8 @@
 
   <div class="layout">
     <div class="case">
-      <div id="loginZone" style="display:flex; flex-direction:column; gap:12px; max-width:420px;">
-        <p style="font-size:13px; color:#4a4638; margin:4px 0 0;">Para guardar tu progreso entre sesiones, ingresa tu nombre y correo. Solo se usan para identificar tu expediente, no se comparten con terceros.</p>
-        <input type="text" id="loginNombre" placeholder="Tu nombre completo" style="padding:11px 12px; border:1px solid var(--paper-2); border-radius:3px; font-family:'Inter',sans-serif; font-size:14px; background:#fffdf6;" />
-        <input type="email" id="loginCorreo" placeholder="Tu correo" style="padding:11px 12px; border:1px solid var(--paper-2); border-radius:3px; font-family:'Inter',sans-serif; font-size:14px; background:#fffdf6;" />
-        <div id="loginError" style="display:none; color:var(--red); font-size:12.5px;"></div>
-        <button class="start-btn" id="loginBtn" style="align-self:flex-start;">Entrar al expediente</button>
-      </div>
-
-      <div class="thread" id="thread" style="display:none;"></div>
-      <div id="starterZone" style="display:none; padding-top:10px;">
+      <div class="thread" id="thread"></div>
+      <div id="starterZone" style="display:flex; padding-top:10px;">
         <button class="start-btn" id="startBtn">Abrir el primer caso</button>
       </div>
       <div class="composer" id="composer" style="display:none;">
@@ -373,7 +365,7 @@
       </div>
 
       <div class="note-box">
-        Prototipo de investigación doctoral · Tu progreso se guarda asociado a tu correo.
+        Prototipo de investigación doctoral · Los datos de esta sesión no se guardan al cerrar la página.
       </div>
     </div>
   </div>
@@ -384,8 +376,6 @@
 <script>
 // ---------- Estado del juego (solo en memoria de esta sesión) ----------
 const state = {
-  nombre: '',
-  correo: '',
   xp: { literal: 0, inferencial: 0, critico: 0 },
   xpToLevel: 30,
   level: 1,
@@ -405,28 +395,18 @@ Reglas del flujo de cada caso:
    - inferencial: relacionar partes del texto para deducir algo no dicho explícitamente.
    - critico: evaluar, contrastar o tomar postura frente al contenido del texto.
    Los distractores (opciones incorrectas) deben representar errores típicos de lectura (ej: literal mal leído, generalización apresurada, opinión no sustentada), no ser absurdos.
-3. Cuando el estudiante responda, evalúa si acertó:
-   - Si acierta: en el campo "feedback" celebra brevemente en personaje y explica en una frase por qué esa era la respuesta correcta, reflejando la ganancia de xp en la competencia trabajada. Además, en ese MISMO turno, incluye en el campo "case_text" el siguiente caso completo (nuevo texto + pregunta) con sus "options". state_update.case_solved = true.
-   - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. En el campo "feedback" incluye SOLO una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). Deja "case_text" y "options" en null — no avances de caso todavía. state_update.case_solved = false.
-   - Si falla una SEGUNDA vez en la misma pregunta: en el campo "feedback" explica la respuesta correcta de forma breve y clara, sin regañar. En ese MISMO turno, incluye en "case_text" el siguiente caso completo con sus "options". state_update.case_solved = true.
+3. Cuando el estudiante responda, evalúa si acertó.
+   - Si acierta: celebra brevemente en personaje, explica en una frase por qué esa era la respuesta correcta, otorga xp_gain en la competencia trabajada (10 a 15 puntos), y presenta el siguiente caso (nuevo texto + pregunta).
+   - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. Haz una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). No avances de caso todavía.
+   - Si falla una SEGUNDA vez en la misma pregunta: ahora sí explica la respuesta correcta de forma breve y clara, sin regañar, y luego presenta el siguiente caso.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
-
-REGLA DE COHERENCIA — OBLIGATORIA:
-Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Antes de responder, revisa tu propia respuesta:
-- Si en "feedback" celebras un acierto o dices que el estudiante ganó puntos/experiencia, entonces "xp_gain" de la competencia correspondiente DEBE ser mayor que 0 en ese mismo turno.
-- Si en "feedback" anuncias o mencionas una credencial nueva, entonces "badge_earned" DEBE contener el nombre exacto de esa credencial en ese mismo turno. Si no mencionas ninguna credencial, "badge_earned" debe ser null.
-- Nunca narres un logro en el texto que no esté reflejado en los datos de "state_update" del mismo turno.
-
-REGLA DE FORMATO DE TEXTO — OBLIGATORIA:
-Los campos "feedback" y "case_text" se muestran tal cual al estudiante, SIN renderizar Markdown. No uses asteriscos para negrita, no uses numerales para títulos, no uses guiones bajos para cursiva. Escribe el texto plano; usa mayúsculas o comillas si necesitas dar énfasis.
 
 FORMATO DE RESPUESTA — MUY IMPORTANTE:
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin bloques de código markdown. Estructura exacta:
 {
-  "feedback": "texto de retroalimentación sobre la respuesta anterior del estudiante (celebración+explicación, pregunta guía, o explicación de la respuesta correcta), o null si este turno no incluye retroalimentación (por ejemplo, el primer caso de toda la sesión)",
-  "case_text": "texto completo del caso nuevo (pista + pregunta), o null si este turno no presenta un caso nuevo todavía (por ejemplo, cuando estás haciendo una pregunta guía tras un primer fallo)",
-  "options": ["A) ...", "B) ...", "C) ...", "D) ..."] o null si "case_text" es null,
+  "message": "texto en personaje que se muestra al estudiante (incluye el texto/pista y la pregunta si aplica, o la retroalimentación socrática, o la explicación)",
+  "options": ["A) ...", "B) ...", "C) ...", "D) ..."] o null si este turno no presenta una pregunta de opción múltiple nueva,
   "state_update": {
     "xp_gain": {"literal": 0, "inferencial": 0, "critico": 0},
     "competency_focus": "literal" | "inferencial" | "critico" | null,
@@ -455,28 +435,17 @@ const sendBtn = document.getElementById('sendBtn');
 const startBtn = document.getElementById('startBtn');
 const starterZone = document.getElementById('starterZone');
 const toastEl = document.getElementById('toast');
-const loginZone = document.getElementById('loginZone');
-const loginNombre = document.getElementById('loginNombre');
-const loginCorreo = document.getElementById('loginCorreo');
-const loginError = document.getElementById('loginError');
-const loginBtn = document.getElementById('loginBtn');
 
 function scrollThread(){
   threadEl.scrollTop = threadEl.scrollHeight;
 }
 
-function addMessage(text, cls, opts={}){
+function addMessage(text, cls){
   const div = document.createElement('div');
   div.className = 'msg ' + cls;
   div.textContent = text;
   threadEl.appendChild(div);
-  if(opts.scrollToTop){
-    // Deja la vista justo al inicio de este mensaje nuevo (para leer el feedback
-    // antes de que el caso siguiente, más abajo, entre en la vista).
-    div.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } else if(opts.scrollToBottom !== false){
-    scrollThread();
-  }
+  scrollThread();
   return div;
 }
 
@@ -504,6 +473,7 @@ function renderOptions(options){
     wrap.appendChild(btn);
   });
   threadEl.appendChild(wrap);
+  scrollThread();
 }
 
 function updateBoard(){
@@ -569,58 +539,6 @@ function applyStateUpdate(update){
     setTimeout(() => showToast('Subiste a nivel ' + state.level + ' — ' + rankLabelFor(state.level)), update.badge_earned ? 1600 : 0);
   }
   updateBoard();
-  saveProgress();
-}
-
-// ---------- Guardar y cargar progreso (Supabase, vía backend propio) ----------
-async function loadProgress(correo){
-  try{
-    const resp = await fetch('/api/progress?correo=' + encodeURIComponent(correo));
-    const data = await resp.json();
-    if(!resp.ok){
-      console.warn('No se pudo cargar el progreso:', data.error);
-      return null;
-    }
-    return data.progreso;
-  } catch(err){
-    console.warn('Error al cargar progreso:', err.message);
-    return null;
-  }
-}
-
-async function saveProgress(){
-  if(!state.correo || !state.nombre) return; // aún no ha iniciado sesión
-  try{
-    await fetch('/api/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        correo: state.correo,
-        nombre: state.nombre,
-        xp_literal: state.xp.literal,
-        xp_inferencial: state.xp.inferencial,
-        xp_critico: state.xp.critico,
-        nivel: state.level,
-        xp_to_level: state.xpToLevel,
-        badges: state.badges,
-        casos_resueltos: state.casesSolved
-      })
-    });
-  } catch(err){
-    console.warn('Error al guardar progreso:', err.message);
-  }
-}
-
-function hydrateStateFromProgress(p){
-  if(!p) return;
-  state.xp.literal = p.xp_literal || 0;
-  state.xp.inferencial = p.xp_inferencial || 0;
-  state.xp.critico = p.xp_critico || 0;
-  state.level = p.nivel || 1;
-  state.xpToLevel = p.xp_to_level || 30;
-  state.badges = Array.isArray(p.badges) ? p.badges : [];
-  state.casesSolved = p.casos_resueltos || 0;
-  updateBoard();
 }
 
 // ---------- Llamada a la API ----------
@@ -628,22 +546,22 @@ async function callClaude(userText){
   const messages = state.history.map(m => ({ role: m.role, content: m.content }));
   messages.push({ role: 'user', content: userText });
 
-  // Nota: ya no llamamos directamente a api.anthropic.com desde el navegador.
-  // Llamamos a nuestro propio backend (/api/chat), que guarda la llave de forma segura.
-  const response = await fetch('/api/chat', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
       system: buildSystemPrompt(),
       messages: messages
     })
   });
 
-  const data = await response.json();
-
   if(!response.ok){
-    throw new Error(data.error || ('Error de red: ' + response.status));
+    throw new Error('Error de red al llamar la API: ' + response.status);
   }
+
+  const data = await response.json();
   const textBlock = data.content.find(b => b.type === 'text');
   if(!textBlock){
     throw new Error('La respuesta no contiene texto.');
@@ -656,14 +574,11 @@ async function callClaude(userText){
     parsed = JSON.parse(raw);
   } catch(e){
     // Si el modelo no devolvió JSON limpio, lo mostramos igual como mensaje plano
-    parsed = { feedback: raw, case_text: null, options: null, state_update: null };
+    parsed = { message: raw, options: null, state_update: null };
   }
 
-  // Para el historial que le mandamos de vuelta al modelo, unimos feedback + caso
-  // en un solo texto (el modelo sí necesita ver su propio turno anterior completo).
-  const assistantSummary = [parsed.feedback, parsed.case_text].filter(Boolean).join('\n\n');
   state.history.push({ role: 'user', content: userText });
-  state.history.push({ role: 'assistant', content: assistantSummary || raw });
+  state.history.push({ role: 'assistant', content: parsed.message || raw });
 
   return parsed;
 }
@@ -678,35 +593,12 @@ async function sendTurn(userText){
 
   try{
     const parsed = await callClaude(userText === '__inicio__' ? 'Quiero abrir mi primer caso.' : userText);
-
-    const hasFeedback = !!parsed.feedback;
-    const hasCase = !!parsed.case_text;
-    const hasOptions = parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0;
-
-    if(hasFeedback){
-      // El feedback es lo primero que debe ver el estudiante: el scroll se queda aquí.
-      addMessage(parsed.feedback, 'bot', { scrollToTop: true });
-    }
-    if(hasCase){
-      // El caso nuevo se agrega DEBAJO, sin mover el scroll — el estudiante lo
-      // encuentra al bajar por su cuenta, después de leer el feedback.
-      addMessage(parsed.case_text, 'bot', { scrollToBottom: false });
-    }
-    if(!hasFeedback && !hasCase){
-      addMessage('(sin contenido)', 'bot');
-    }
-
-    if(hasOptions){
+    addMessage(parsed.message || '(sin contenido)', 'bot');
+    if(parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0){
       renderOptions(parsed.options);
-      if(!hasFeedback){
-        // No hubo feedback que proteger en este turno (ej. el primer caso de la sesión):
-        // sí llevamos la vista hasta las opciones nuevas.
-        scrollThread();
-      }
     } else {
       composer.style.display = 'flex';
     }
-
     applyStateUpdate(parsed.state_update);
     statusLine.textContent = 'esperando tu respuesta';
   } catch(err){
@@ -717,44 +609,6 @@ async function sendTurn(userText){
     sendBtn.disabled = false;
   }
 }
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-loginBtn.addEventListener('click', async () => {
-  const nombre = loginNombre.value.trim();
-  const correo = loginCorreo.value.trim().toLowerCase();
-  loginError.style.display = 'none';
-
-  if(nombre.length < 2){
-    loginError.textContent = 'Escribe tu nombre completo.';
-    loginError.style.display = 'block';
-    return;
-  }
-  if(!EMAIL_REGEX.test(correo)){
-    loginError.textContent = 'Escribe un correo válido.';
-    loginError.style.display = 'block';
-    return;
-  }
-
-  loginBtn.disabled = true;
-  loginBtn.textContent = 'Entrando...';
-
-  state.nombre = nombre;
-  state.correo = correo;
-
-  const existing = await loadProgress(correo);
-  hydrateStateFromProgress(existing);
-
-  loginZone.style.display = 'none';
-  document.getElementById('thread').style.display = 'flex';
-
-  if(existing && existing.casos_resueltos > 0){
-    addSystemNote('Bienvenido de vuelta, ' + nombre + '. Continuamos donde quedaste.');
-    starterZone.style.display = 'flex';
-  } else {
-    starterZone.style.display = 'flex';
-  }
-});
 
 startBtn.addEventListener('click', () => {
   starterZone.style.display = 'none';
