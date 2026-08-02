@@ -444,7 +444,8 @@ Reglas del flujo de cada caso:
    - Si falla una SEGUNDA vez en la misma pregunta: en el campo "feedback" explica la respuesta correcta de forma breve y clara, sin regañar. En ese MISMO turno, incluye en "case_text" el siguiente caso completo con sus "options". state_update.case_solved = true.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
-6. Si el estudiante responde con solo una letra (ej. "B" o "b)") en vez del texto completo de la opción, busca en tu propio turno anterior (en el historial de la conversación) cuáles eran las opciones de esa pregunta, e interpreta la letra como la selección de esa opción. NUNCA le pidas al estudiante que te repita el texto completo de una opción — esa información ya está en el historial de la conversación, en la lista "Opciones presentadas".
+6. Si el estudiante responde con solo una letra (ej. "B" o "b)") en vez del texto completo de la opción, busca en tu propio turno anterior (en el historial de la conversación) cuáles eran las opciones de esa pregunta, e interpreta la letra como la selección de esa opción. NUNCA le pidas al estudiante que te repita el texto completo de una opción — esa información ya está en el historial de la conversación, en el bloque marcado "[NOTA INTERNA...]".
+7. Las opciones de una pregunta van ÚNICAMENTE en el campo "options" del JSON. NUNCA escribas las opciones (ni un encabezado tipo "Opciones presentadas") dentro del texto de "case_text" — eso duplicaría la información y rompería los botones de respuesta en la interfaz. El bloque "[NOTA INTERNA...]" que ves en el historial es solo una referencia para ti, no un formato que debas repetir ni imitar.
 
 REGLA DE COHERENCIA — OBLIGATORIA:
 Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Antes de responder, revisa tu propia respuesta:
@@ -524,6 +525,8 @@ function showToast(text){
   setTimeout(() => toastEl.classList.remove('show'), 3200);
 }
 
+let activeOptionsWrap = null;
+
 function renderOptions(options){
   const wrap = document.createElement('div');
   wrap.className = 'options';
@@ -538,6 +541,13 @@ function renderOptions(options){
     wrap.appendChild(btn);
   });
   threadEl.appendChild(wrap);
+  activeOptionsWrap = wrap;
+}
+
+function reenableActiveOptions(){
+  if(activeOptionsWrap){
+    Array.from(activeOptionsWrap.querySelectorAll('button')).forEach(b => b.disabled = false);
+  }
 }
 
 function updateBoard(){
@@ -697,8 +707,10 @@ async function callClaude(userText){
   // + las opciones (si las hubo) en un solo texto — el modelo necesita ver su propio
   // turno anterior completo, incluyendo las alternativas A-D que le mostró al estudiante,
   // para poder interpretar respuestas cortas como "B" en el turno siguiente.
+  // Se marca como "nota interna" (y no como parte del caso) para que el modelo no
+  // vuelva a copiar ese mismo formato dentro de su propio case_text en turnos futuros.
   const optionsText = (parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0)
-    ? 'Opciones presentadas:\n' + parsed.options.join('\n')
+    ? '[NOTA INTERNA — no forma parte del caso, no repetir este bloque ni su encabezado en futuras respuestas; solo consultar aquí si el estudiante responde con una letra suelta]\n' + parsed.options.join('\n')
     : null;
   const assistantSummary = [parsed.feedback, parsed.case_text, optionsText].filter(Boolean).join('\n\n');
   state.history.push({ role: 'user', content: userText });
@@ -742,7 +754,13 @@ async function sendTurn(userText){
         // sí llevamos la vista hasta las opciones nuevas.
         scrollThread();
       }
+    } else if(hasFeedback && !hasCase){
+      // Fue una pregunta guía (primer fallo en la misma pregunta): reactivamos los
+      // mismos botones de opciones para que el estudiante vuelva a elegir con un clic,
+      // en vez de tener que escribir la respuesta a mano.
+      reenableActiveOptions();
     } else {
+      // Respaldo por si el formato no vino como se esperaba.
       composer.style.display = 'flex';
     }
 
