@@ -455,7 +455,7 @@ Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Ant
 - Nunca narres un logro en el texto que no esté reflejado en los datos de "state_update" del mismo turno.
 
 REGLA DE FORMATO DE TEXTO — OBLIGATORIA:
-Los campos "feedback" y "case_text" se muestran tal cual al estudiante, SIN renderizar Markdown. No uses asteriscos para negrita, no uses numerales para títulos, no uses guiones bajos para cursiva. Escribe el texto plano; usa mayúsculas o comillas si necesitas dar énfasis.
+Los campos "feedback" y "case_text" se muestran tal cual al estudiante, SIN renderizar Markdown. No uses asteriscos para negrita, no uses numerales para títulos, no uses guiones bajos para cursiva. Escribe el texto plano; usa mayúsculas o comillas si necesitas dar énfasis. NUNCA incluyas dentro de "feedback" ni "case_text" bloques de código, comillas triples (```), ni una copia o descripción de tu propio JSON de respuesta — esos campos son solo narrativa para el estudiante, nunca deben contener código ni estructura técnica.
 
 FORMATO DE RESPUESTA — MUY IMPORTANTE:
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin bloques de código markdown. Estructura exacta:
@@ -707,6 +707,20 @@ async function callClaude(userText){
     // Si el modelo no devolvió JSON limpio, lo mostramos igual como mensaje plano
     parsed = { feedback: raw, case_text: null, options: null, state_update: null };
   }
+
+  // --- Red de seguridad: si el modelo se "filtra" y mete un bloque de código o una
+  // copia de su propio JSON dentro de feedback/case_text, lo recortamos antes de
+  // mostrarlo o guardarlo. Buscamos el primer indicio de código y cortamos ahí.
+  function stripLeakedCode(text){
+    if(typeof text !== 'string') return text;
+    const marker = text.search(/```|\{\s*\n?\s*"feedback"|\{\s*\n?\s*"message"/);
+    if(marker > 0){
+      return text.slice(0, marker).trim();
+    }
+    return text;
+  }
+  parsed.feedback = stripLeakedCode(parsed.feedback);
+  parsed.case_text = stripLeakedCode(parsed.case_text);
 
   // Para el historial que le mandamos de vuelta al modelo, unimos SOLO feedback + caso
   // (el texto que el estudiante realmente vio). Las opciones ya NO van aquí — viven
