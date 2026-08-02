@@ -457,19 +457,8 @@ Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Ant
 REGLA DE FORMATO DE TEXTO — OBLIGATORIA:
 Los campos "feedback" y "case_text" se muestran tal cual al estudiante, SIN renderizar Markdown. No uses asteriscos para negrita, no uses numerales para títulos, no uses guiones bajos para cursiva. Escribe el texto plano; usa mayúsculas o comillas si necesitas dar énfasis. NUNCA incluyas dentro de "feedback" ni "case_text" bloques de código, comillas triples, ni una copia o descripción de tu propio JSON de respuesta — esos campos son solo narrativa para el estudiante, nunca deben contener código ni estructura técnica.
 
-FORMATO DE RESPUESTA — MUY IMPORTANTE:
-Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin bloques de código markdown. Estructura exacta:
-{
-  "feedback": "texto de retroalimentación sobre la respuesta anterior del estudiante (celebración+explicación, pregunta guía, o explicación de la respuesta correcta), o null si este turno no incluye retroalimentación (por ejemplo, el primer caso de toda la sesión)",
-  "case_text": "texto completo del caso nuevo (pista + pregunta), o null si este turno no presenta un caso nuevo todavía (por ejemplo, cuando estás haciendo una pregunta guía tras un primer fallo)",
-  "options": ["A) ...", "B) ...", "C) ...", "D) ..."] o null si "case_text" es null,
-  "state_update": {
-    "xp_gain": {"literal": 0, "inferencial": 0, "critico": 0},
-    "competency_focus": "literal" | "inferencial" | "critico" | null,
-    "badge_earned": null o "nombre de la credencial",
-    "case_solved": true o false
-  }
-}`;
+FORMATO DE RESPUESTA:
+Debes usar siempre la herramienta "responder_caso" para entregar tu respuesta — el sistema técnico ya te obliga a esto, no necesitas escribir JSON como texto. Simplemente llena cada campo de la herramienta según las reglas de arriba: "feedback", "case_text", "options" (arreglo vacío [] cuando no aplica, nunca null), y "state_update" con sus datos.`;
 
 function buildSystemPrompt(){
   const pendingOptionsBlock = (state.lastOptions && state.lastOptions.length > 0)
@@ -673,10 +662,7 @@ function hydrateStateFromProgress(p){
 }
 
 // ---------- Llamada a la API ----------
-async function callClaude(userText){
-  const messages = state.history.map(m => ({ role: m.role, content: m.content }));
-  messages.push({ role: 'user', content: userText });
-
+async function callClaudeRaw(messages){
   // Nota: ya no llamamos directamente a api.anthropic.com desde el navegador.
   // Llamamos a nuestro propio backend (/api/chat), que guarda la llave de forma segura.
   const response = await fetch('/api/chat', {
@@ -693,32 +679,54 @@ async function callClaude(userText){
   if(!response.ok){
     throw new Error(data.error || ('Error de red: ' + response.status));
   }
-  const textBlock = data.content.find(b => b.type === 'text');
-  if(!textBlock){
-    throw new Error('La respuesta no contiene texto.');
+  // La respuesta ya viene estructurada por la API (gracias al "tool use" forzado en
+  // el backend) — ya no hay que parsear texto ni preocuparse por bloques de código
+  // filtrados o JSON mal formado. Buscamos el bloque tool_use y usamos su "input"
+  // directamente como objeto.
+  const toolUseBlock = data.content.find(b => b.type === 'tool_use');
+  if(!toolUseBlock){
+    throw new Error('La respuesta no incluyó datos estructurados (tool_use).');
   }
-  let raw = textBlock.text.trim();
-  raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+  return toolUseBlock.input;
+}
 
-  let parsed;
-  try{
-    parsed = JSON.parse(raw);
-  } catch(e){
-    // Si el modelo no devolvió JSON limpio, lo mostramos igual como mensaje plano
-    parsed = { feedback: raw, case_text: null, options: null, state_update: null };
+function stripLeakedCode(text){
+  if(typeof text !== 'string') return text;
+  const marker = text.search(/```|\{\s*\n?\s*"feedback"|\{\s*\n?\s*"message"/);
+  if(marker > 0){
+    return text.slice(0, marker).trim();
   }
+  return text;
+}
 
-  // --- Red de seguridad: si el modelo se "filtra" y mete un bloque de código o una
-  // copia de su propio JSON dentro de feedback/case_text, lo recortamos antes de
-  // mostrarlo o guardarlo. Buscamos el primer indicio de código y cortamos ahí.
-  function stripLeakedCode(text){
-    if(typeof text !== 'string') return text;
-    const marker = text.search(/```|\{\s*\n?\s*"feedback"|\{\s*\n?\s*"message"/);
-    if(marker > 0){
-      return text.slice(0, marker).trim();
+async function callClaude(userText){
+  const baseMessages = state.history.map(m => ({ role: m.role, content: m.content }));
+  baseMessages.push({ role: 'user', content: userText });
+
+  let parsed = await callClaudeRaw(baseMessages);
+
+  // --- Verificación de la garantía "toda pregunta trae 4 opciones" ---
+  // Si hay un caso nuevo (case_text) pero no vinieron exactamente 4 opciones,
+  // no se lo mostramos al estudiante todavía: le pedimos al modelo, en un turno
+  // adicional (invisible para el estudiante), que corrija su propia respuesta.
+  const needsOptionsFix = !!parsed.case_text && (!Array.isArray(parsed.options) || parsed.options.length !== 4);
+  if(needsOptionsFix){
+    const correctionMessages = [
+      ...baseMessages,
+      { role: 'assistant', content: '[Respuesta interna con formato incompleto, descartada]' },
+      { role: 'user', content: 'Tu respuesta anterior presentó un caso nuevo pero no incluyó exactamente 4 opciones en el campo "options". Vuelve a responder este mismo turno, con el mismo caso, incluyendo las 4 opciones completas.' }
+    ];
+    try{
+      parsed = await callClaudeRaw(correctionMessages);
+    } catch(e){
+      // Si la corrección falla, seguimos con lo que teníamos; stripLeakedCode y el
+      // resto del flujo igual protegen la pantalla del estudiante.
     }
-    return text;
   }
+
+  // --- Red de seguridad adicional: por si acaso el modelo, dentro de un campo de
+  // texto válido, igual llega a mencionar un bloque de código (poco probable ahora,
+  // pero no imposible) — lo recortamos antes de mostrarlo.
   parsed.feedback = stripLeakedCode(parsed.feedback);
   parsed.case_text = stripLeakedCode(parsed.case_text);
 
@@ -728,7 +736,7 @@ async function callClaude(userText){
   // como parte del "guion" que puede repetir dentro de su propio case_text.
   const assistantSummary = [parsed.feedback, parsed.case_text].filter(Boolean).join('\n\n');
   state.history.push({ role: 'user', content: userText });
-  state.history.push({ role: 'assistant', content: assistantSummary || raw });
+  state.history.push({ role: 'assistant', content: assistantSummary || '(sin contenido)' });
 
   // Guardamos las opciones de la pregunta más reciente para pasarlas como referencia
   // en el próximo system prompt (ver buildSystemPrompt).
