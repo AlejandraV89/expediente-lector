@@ -424,6 +424,7 @@ const state = {
   level: 1,
   badges: [],
   casesSolved: 0,
+  lastOptions: null, // opciones de la pregunta más reciente, para referencia interna del prompt
   history: [] // { role: 'user' | 'assistant', content: string } -- texto visible, no JSON crudo
 };
 
@@ -444,8 +445,8 @@ Reglas del flujo de cada caso:
    - Si falla una SEGUNDA vez en la misma pregunta: en el campo "feedback" explica la respuesta correcta de forma breve y clara, sin regañar. En ese MISMO turno, incluye en "case_text" el siguiente caso completo con sus "options". state_update.case_solved = true.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
-6. Si el estudiante responde con solo una letra (ej. "B" o "b)") en vez del texto completo de la opción, busca en tu propio turno anterior (en el historial de la conversación) cuáles eran las opciones de esa pregunta, e interpreta la letra como la selección de esa opción. NUNCA le pidas al estudiante que te repita el texto completo de una opción — esa información ya está en el historial de la conversación, en el bloque marcado "[NOTA INTERNA...]".
-7. Las opciones de una pregunta van ÚNICAMENTE en el campo "options" del JSON. NUNCA escribas las opciones (ni un encabezado tipo "Opciones presentadas") dentro del texto de "case_text" — eso duplicaría la información y rompería los botones de respuesta en la interfaz. El bloque "[NOTA INTERNA...]" que ves en el historial es solo una referencia para ti, no un formato que debas repetir ni imitar.
+6. Si el estudiante responde con solo una letra (ej. "B" o "b)") en vez del texto completo de la opción, usa la sección "Referencia interna" que aparece al final de tus instrucciones del sistema (no en el historial de la conversación) para saber a qué opción corresponde esa letra. NUNCA le pidas al estudiante que te repita el texto completo de una opción.
+7. Las opciones de una pregunta van ÚNICAMENTE en el campo "options" del JSON. NUNCA escribas las opciones, ni un encabezado como "Opciones presentadas" o "Referencia interna", dentro del texto de "case_text" o "feedback" — esos campos son solo lo que el estudiante debe leer. Cualquier bloque de "Referencia interna" que veas es una instrucción para ti, jamás un texto que debas reproducir.
 
 REGLA DE COHERENCIA — OBLIGATORIA:
 Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Antes de responder, revisa tu propia respuesta:
@@ -471,6 +472,10 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, si
 }`;
 
 function buildSystemPrompt(){
+  const pendingOptionsBlock = (state.lastOptions && state.lastOptions.length > 0)
+    ? `\n\nReferencia interna — opciones de la pregunta que el estudiante tiene actualmente en pantalla (úsala SOLO para interpretar si el estudiante responde con una letra suelta como "B"; esto es una instrucción para ti, NUNCA la copies ni la menciones dentro de "case_text" ni "feedback"):\n${state.lastOptions.join('\n')}`
+    : '';
+
   return SYSTEM_PROMPT_BASE + `
 
 Estado actual del investigador (úsalo para calibrar dificultad, no lo repitas literalmente al estudiante):
@@ -478,7 +483,7 @@ Estado actual del investigador (úsalo para calibrar dificultad, no lo repitas l
 - XP literal: ${state.xp.literal}
 - XP inferencial: ${state.xp.inferencial}
 - XP crítico-intertextual: ${state.xp.critico}
-- Casos resueltos en la sesión: ${state.casesSolved}`;
+- Casos resueltos en la sesión: ${state.casesSolved}${pendingOptionsBlock}`;
 }
 
 // ---------- UI helpers ----------
@@ -703,18 +708,19 @@ async function callClaude(userText){
     parsed = { feedback: raw, case_text: null, options: null, state_update: null };
   }
 
-  // Para el historial que le mandamos de vuelta al modelo, unimos feedback + caso
-  // + las opciones (si las hubo) en un solo texto — el modelo necesita ver su propio
-  // turno anterior completo, incluyendo las alternativas A-D que le mostró al estudiante,
-  // para poder interpretar respuestas cortas como "B" en el turno siguiente.
-  // Se marca como "nota interna" (y no como parte del caso) para que el modelo no
-  // vuelva a copiar ese mismo formato dentro de su propio case_text en turnos futuros.
-  const optionsText = (parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0)
-    ? '[NOTA INTERNA — no forma parte del caso, no repetir este bloque ni su encabezado en futuras respuestas; solo consultar aquí si el estudiante responde con una letra suelta]\n' + parsed.options.join('\n')
-    : null;
-  const assistantSummary = [parsed.feedback, parsed.case_text, optionsText].filter(Boolean).join('\n\n');
+  // Para el historial que le mandamos de vuelta al modelo, unimos SOLO feedback + caso
+  // (el texto que el estudiante realmente vio). Las opciones ya NO van aquí — viven
+  // en el system prompt como referencia interna, para que el modelo no las trate
+  // como parte del "guion" que puede repetir dentro de su propio case_text.
+  const assistantSummary = [parsed.feedback, parsed.case_text].filter(Boolean).join('\n\n');
   state.history.push({ role: 'user', content: userText });
   state.history.push({ role: 'assistant', content: assistantSummary || raw });
+
+  // Guardamos las opciones de la pregunta más reciente para pasarlas como referencia
+  // en el próximo system prompt (ver buildSystemPrompt).
+  if(parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0){
+    state.lastOptions = parsed.options;
+  }
 
   return parsed;
 }
