@@ -93,6 +93,37 @@
     padding:3px 10px;
     border-radius:3px;
   }
+  .login-card{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+  }
+  .login-card-inner{
+    width:100%;
+    max-width:380px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    background:#fffdf6;
+    border:1px solid var(--paper-2);
+    border-radius:6px;
+    padding:28px 26px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);
+  }
+  .login-card-inner input{
+    padding:11px 12px;
+    border:1px solid var(--paper-2);
+    border-radius:3px;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    background:#fffdf6;
+  }
+  .login-card-inner .start-btn{
+    align-self:center;
+    width:100%;
+  }
   .thread{
     flex:1;
     display:flex;
@@ -320,12 +351,14 @@
 
   <div class="layout">
     <div class="case">
-      <div id="loginZone" style="display:flex; flex-direction:column; gap:12px; max-width:420px;">
-        <p style="font-size:13px; color:#4a4638; margin:4px 0 0;">Para guardar tu progreso entre sesiones, ingresa tu nombre y correo. Solo se usan para identificar tu expediente, no se comparten con terceros.</p>
-        <input type="text" id="loginNombre" placeholder="Tu nombre completo" style="padding:11px 12px; border:1px solid var(--paper-2); border-radius:3px; font-family:'Inter',sans-serif; font-size:14px; background:#fffdf6;" />
-        <input type="email" id="loginCorreo" placeholder="Tu correo" style="padding:11px 12px; border:1px solid var(--paper-2); border-radius:3px; font-family:'Inter',sans-serif; font-size:14px; background:#fffdf6;" />
-        <div id="loginError" style="display:none; color:var(--red); font-size:12.5px;"></div>
-        <button class="start-btn" id="loginBtn" style="align-self:flex-start;">Entrar al expediente</button>
+      <div id="loginZone" class="login-card">
+        <div class="login-card-inner">
+          <p style="font-size:13px; color:#4a4638; margin:0; text-align:center;">Para guardar tu progreso entre sesiones, ingresa tu nombre y correo. Solo se usan para identificar tu expediente, no se comparten con terceros.</p>
+          <input type="text" id="loginNombre" placeholder="Tu nombre completo" />
+          <input type="email" id="loginCorreo" placeholder="Tu correo" />
+          <div id="loginError" style="display:none; color:var(--red); font-size:12.5px; text-align:center;"></div>
+          <button class="start-btn" id="loginBtn">Entrar al expediente</button>
+        </div>
       </div>
 
       <div class="thread" id="thread" style="display:none;"></div>
@@ -411,6 +444,7 @@ Reglas del flujo de cada caso:
    - Si falla una SEGUNDA vez en la misma pregunta: en el campo "feedback" explica la respuesta correcta de forma breve y clara, sin regañar. En ese MISMO turno, incluye en "case_text" el siguiente caso completo con sus "options". state_update.case_solved = true.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
+6. Si el estudiante responde con solo una letra (ej. "B" o "b)") en vez del texto completo de la opción, busca en tu propio turno anterior (en el historial de la conversación) cuáles eran las opciones de esa pregunta, e interpreta la letra como la selección de esa opción. NUNCA le pidas al estudiante que te repita el texto completo de una opción — esa información ya está en el historial de la conversación, en la lista "Opciones presentadas".
 
 REGLA DE COHERENCIA — OBLIGATORIA:
 Los campos "feedback", "case_text" y "state_update" deben coincidir siempre. Antes de responder, revisa tu propia respuesta:
@@ -660,8 +694,13 @@ async function callClaude(userText){
   }
 
   // Para el historial que le mandamos de vuelta al modelo, unimos feedback + caso
-  // en un solo texto (el modelo sí necesita ver su propio turno anterior completo).
-  const assistantSummary = [parsed.feedback, parsed.case_text].filter(Boolean).join('\n\n');
+  // + las opciones (si las hubo) en un solo texto — el modelo necesita ver su propio
+  // turno anterior completo, incluyendo las alternativas A-D que le mostró al estudiante,
+  // para poder interpretar respuestas cortas como "B" en el turno siguiente.
+  const optionsText = (parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0)
+    ? 'Opciones presentadas:\n' + parsed.options.join('\n')
+    : null;
+  const assistantSummary = [parsed.feedback, parsed.case_text, optionsText].filter(Boolean).join('\n\n');
   state.history.push({ role: 'user', content: userText });
   state.history.push({ role: 'assistant', content: assistantSummary || raw });
 
