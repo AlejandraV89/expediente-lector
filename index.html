@@ -63,8 +63,56 @@
     grid-template-columns:1fr 300px;
     gap:20px;
   }
+  .mobile-bar{ display:none; }
   @media (max-width:760px){
     .layout{grid-template-columns:1fr;}
+    .board{ display:none; }
+    .board.expanded{ display:flex; margin-top:-14px; }
+    .mobile-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      background:var(--ink-2);
+      border:1px solid var(--border-ink);
+      border-radius:4px;
+      padding:8px 12px;
+      margin-bottom:14px;
+      cursor:pointer;
+    }
+    .mobile-bar .left{
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .mobile-bar .rank-mini{
+      font-family:'JetBrains Mono',monospace;
+      font-size:12px;
+      color:var(--amber);
+      white-space:nowrap;
+    }
+    .mobile-bar .bar-mini-track{
+      width:60px;
+      height:6px;
+      background:var(--ink);
+      border-radius:3px;
+      overflow:hidden;
+    }
+    .mobile-bar .bar-mini-fill{
+      height:100%;
+      background:var(--teal);
+    }
+    .mobile-bar .xp-mini{
+      font-size:11px;
+      color:var(--text-muted);
+      white-space:nowrap;
+    }
+    .mobile-bar .right{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      color:var(--text-on-ink);
+      font-size:12px;
+    }
   }
 
   /* ---- Case file / chat panel ---- */
@@ -361,6 +409,18 @@
         </div>
       </div>
 
+      <div class="mobile-bar" id="mobileBar">
+        <div class="left">
+          <span class="rank-mini" id="mobileRank">Nivel 1</span>
+          <div class="bar-mini-track"><div class="bar-mini-fill" id="mobileXpBar" style="width:0%;"></div></div>
+          <span class="xp-mini" id="mobileXpText">0/30</span>
+        </div>
+        <div class="right">
+          <span id="mobileBadgeCount">0 insignias</span>
+          <span id="mobileBarChevron">&#9662;</span>
+        </div>
+      </div>
+
       <div class="thread" id="thread" style="display:none;"></div>
       <div id="starterZone" style="display:none; padding-top:10px;">
         <button class="start-btn" id="startBtn">Abrir el primer caso</button>
@@ -371,7 +431,7 @@
       </div>
     </div>
 
-    <div class="board">
+    <div class="board" id="boardPanel">
       <div>
         <h2>Rango del investigador</h2>
         <div class="rank" id="rankNum">Nivel 1</div>
@@ -568,7 +628,23 @@ function updateBoard(){
       badgesZone.appendChild(el);
     });
   }
+
+  // ---- Mantener sincronizada la barra compacta de móvil con los mismos datos ----
+  const totalXp = state.xp.literal + state.xp.inferencial + state.xp.critico;
+  const totalTarget = state.xpToLevel * 3;
+  document.getElementById('mobileRank').textContent = 'Nivel ' + state.level;
+  document.getElementById('mobileXpBar').style.width = Math.min(100, Math.round((totalXp / totalTarget) * 100)) + '%';
+  document.getElementById('mobileXpText').textContent = totalXp + '/' + totalTarget;
+  document.getElementById('mobileBadgeCount').textContent = state.badges.length + (state.badges.length === 1 ? ' insignia' : ' insignias');
 }
+
+// Al tocar la barra compacta en móvil, se expande/colapsa el panel completo debajo.
+document.getElementById('mobileBar').addEventListener('click', () => {
+  const panel = document.getElementById('boardPanel');
+  const chevron = document.getElementById('mobileBarChevron');
+  panel.classList.toggle('expanded');
+  chevron.innerHTML = panel.classList.contains('expanded') ? '&#9652;' : '&#9662;';
+});
 
 function capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
 
