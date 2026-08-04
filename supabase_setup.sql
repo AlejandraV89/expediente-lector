@@ -16,3 +16,8 @@ create table progreso (
 
 -- Índice para que el panel docente pueda listar por fecha de actividad reciente
 create index progreso_actualizado_idx on progreso (actualizado_en desc);
+
+-- Migración: nivel y meta de XP independientes por competencia (literal, inferencial,
+-- crítico), en vez de un único nivel/meta compartido entre las tres.
+alter table progreso add column if not exists competencias_nivel jsonb default
+  '{"literal":{"level":1,"xpToLevel":30},"inferencial":{"level":1,"xpToLevel":30},"critico":{"level":1,"xpToLevel":30}}'::jsonb;

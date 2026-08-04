@@ -62,7 +62,11 @@ export default async function handler(req, res) {
       xp_inferencial: Number(body.xp_inferencial) || 0,
       xp_critico: Number(body.xp_critico) || 0,
       nivel: Number(body.nivel) || 1,
-      xp_to_level: Number(body.xp_to_level) || 30,
+      competencias_nivel: body.competencias_nivel || {
+        literal: { level: 1, xpToLevel: 30 },
+        inferencial: { level: 1, xpToLevel: 30 },
+        critico: { level: 1, xpToLevel: 30 }
+      },
       badges: Array.isArray(body.badges) ? body.badges : [],
       casos_resueltos: Number(body.casos_resueltos) || 0,
       actualizado_en: new Date().toISOString()

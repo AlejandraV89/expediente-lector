@@ -479,9 +479,11 @@
 const state = {
   nombre: '',
   correo: '',
-  xp: { literal: 0, inferencial: 0, critico: 0 },
-  xpToLevel: 30,
-  level: 1,
+  comp: {
+    literal:      { xp: 0, level: 1, xpToLevel: 30 },
+    inferencial:  { xp: 0, level: 1, xpToLevel: 30 },
+    critico:      { xp: 0, level: 1, xpToLevel: 30 }
+  },
   badges: [],
   casesSolved: 0,
   lastOptions: null, // opciones de la pregunta más reciente, para referencia interna del prompt
@@ -489,6 +491,14 @@ const state = {
 };
 
 const XP_LEVEL_INCREMENT = 15;
+
+// Nivel general del investigador = promedio (redondeado hacia abajo) de los niveles
+// de las tres competencias. Así el rango refleja un progreso balanceado, no solo
+// la competencia más fuerte.
+function overallLevel(){
+  const avg = (state.comp.literal.level + state.comp.inferencial.level + state.comp.critico.level) / 3;
+  return Math.max(1, Math.floor(avg));
+}
 
 const SYSTEM_PROMPT_BASE = `Eres "Detective Vega", un investigador experto que resuelve "casos" junto a un estudiante de grado 10-11 (Colombia). Cada "caso" es en realidad un ejercicio de lectura crítica al estilo de las Pruebas Saber 11 del ICFES, camuflado dentro de una narrativa de misterio/investigación. Tu tono es cercano, un poco teatral, pero nunca infantil.
 
@@ -528,10 +538,10 @@ function buildSystemPrompt(){
   return SYSTEM_PROMPT_BASE + `
 
 Estado actual del investigador (úsalo para calibrar dificultad, no lo repitas literalmente al estudiante):
-- Nivel: ${state.level}
-- XP literal: ${state.xp.literal}
-- XP inferencial: ${state.xp.inferencial}
-- XP crítico-intertextual: ${state.xp.critico}
+- Nivel: ${overallLevel()}
+- XP literal: ${state.comp.literal.xp} (nivel ${state.comp.literal.level})
+- XP inferencial: ${state.comp.inferencial.xp} (nivel ${state.comp.inferencial.level})
+- XP crítico-intertextual: ${state.comp.critico.xp} (nivel ${state.comp.critico.level})
 - Casos resueltos en la sesión: ${state.casesSolved}${pendingOptionsBlock}`;
 }
 
@@ -605,15 +615,17 @@ function reenableActiveOptions(){
 }
 
 function updateBoard(){
+  let pctSum = 0;
   ['literal','inferencial','critico'].forEach(comp => {
-    const val = state.xp[comp];
-    const target = state.xpToLevel;
-    const pct = Math.min(100, Math.round((val / target) * 100));
+    const c = state.comp[comp];
+    const pct = Math.min(100, Math.round((c.xp / c.xpToLevel) * 100));
+    pctSum += pct;
     document.getElementById('xp' + capitalize(comp) + 'Bar').style.width = pct + '%';
-    document.getElementById('xp' + capitalize(comp) + 'Num').textContent = val + ' / ' + target;
+    document.getElementById('xp' + capitalize(comp) + 'Num').textContent = c.xp + ' / ' + c.xpToLevel;
   });
-  document.getElementById('rankNum').textContent = 'Nivel ' + state.level;
-  document.getElementById('rankLabel').textContent = rankLabelFor(state.level);
+  const level = overallLevel();
+  document.getElementById('rankNum').textContent = 'Nivel ' + level;
+  document.getElementById('rankLabel').textContent = rankLabelFor(level);
   document.getElementById('streakLine').textContent = state.casesSolved + ' casos resueltos en esta sesión';
 
   const badgesZone = document.getElementById('badgesZone');
@@ -630,12 +642,20 @@ function updateBoard(){
   }
 
   // ---- Mantener sincronizada la barra compacta de móvil con los mismos datos ----
-  const totalXp = state.xp.literal + state.xp.inferencial + state.xp.critico;
-  const totalTarget = state.xpToLevel * 3;
-  document.getElementById('mobileRank').textContent = 'Nivel ' + state.level;
-  document.getElementById('mobileXpBar').style.width = Math.min(100, Math.round((totalXp / totalTarget) * 100)) + '%';
-  document.getElementById('mobileXpText').textContent = totalXp + '/' + totalTarget;
-  document.getElementById('mobileBadgeCount').textContent = state.badges.length + (state.badges.length === 1 ? ' insignia' : ' insignias');
+  // En vez de sumar XP de las tres competencias contra una meta compartida (que podía
+  // dar números confusos como "220/270"), mostramos el promedio de avance (0-100%)
+  // de las tres competencias — un solo porcentaje claro.
+  const avgPct = Math.round(pctSum / 3);
+  document.getElementById('mobileRank').textContent = 'Nivel ' + level;
+  document.getElementById('mobileXpBar').style.width = avgPct + '%';
+  document.getElementById('mobileXpText').textContent = avgPct + '%';
+  // Mostramos el nombre de la insignia más reciente, no solo un conteo.
+  const badgeLabel = document.getElementById('mobileBadgeCount');
+  if(state.badges.length === 0){
+    badgeLabel.textContent = 'sin insignias';
+  } else {
+    badgeLabel.textContent = state.badges[state.badges.length - 1];
+  }
 }
 
 // Al tocar la barra compacta en móvil, se expande/colapsa el panel completo debajo.
@@ -655,33 +675,40 @@ function rankLabelFor(level){
 
 function applyStateUpdate(update){
   if(!update) return;
-  let leveledUp = false;
+  const levelBefore = overallLevel();
+
   if(update.xp_gain){
     ['literal','inferencial','critico'].forEach(comp => {
       const gain = Number(update.xp_gain[comp]) || 0;
       if(gain > 0){
-        state.xp[comp] += gain;
+        const c = state.comp[comp];
+        c.xp += gain;
+        // Cada competencia sube de nivel de forma independiente, con su propia meta,
+        // que crece cada vez que esa competencia específica la alcanza.
+        while(c.xp >= c.xpToLevel){
+          c.level += 1;
+          c.xpToLevel += XP_LEVEL_INCREMENT;
+        }
       }
     });
   }
-  // Revisar si sube de nivel general (promedio simple de XP total vs umbral escalado)
-  const totalXp = state.xp.literal + state.xp.inferencial + state.xp.critico;
-  const neededForNext = state.level * 45;
-  if(totalXp >= neededForNext){
-    state.level += 1;
-    state.xpToLevel += XP_LEVEL_INCREMENT;
-    leveledUp = true;
-  }
+
   if(update.badge_earned){
-    state.badges.push(update.badge_earned);
-    showToast('Nueva credencial: ' + update.badge_earned);
+    // No duplicar una credencial que el estudiante ya tiene.
+    if(!state.badges.includes(update.badge_earned)){
+      state.badges.push(update.badge_earned);
+      showToast('Nueva credencial: ' + update.badge_earned);
+    }
   }
   if(update.case_solved){
     state.casesSolved += 1;
   }
-  if(leveledUp){
-    setTimeout(() => showToast('Subiste a nivel ' + state.level + ' — ' + rankLabelFor(state.level)), update.badge_earned ? 1600 : 0);
+
+  const levelAfter = overallLevel();
+  if(levelAfter > levelBefore){
+    setTimeout(() => showToast('Subiste a nivel ' + levelAfter + ' — ' + rankLabelFor(levelAfter)), update.badge_earned ? 1600 : 0);
   }
+
   updateBoard();
   saveProgress();
 }
@@ -711,11 +738,15 @@ async function saveProgress(){
       body: JSON.stringify({
         correo: state.correo,
         nombre: state.nombre,
-        xp_literal: state.xp.literal,
-        xp_inferencial: state.xp.inferencial,
-        xp_critico: state.xp.critico,
-        nivel: state.level,
-        xp_to_level: state.xpToLevel,
+        xp_literal: state.comp.literal.xp,
+        xp_inferencial: state.comp.inferencial.xp,
+        xp_critico: state.comp.critico.xp,
+        nivel: overallLevel(),
+        competencias_nivel: {
+          literal: { level: state.comp.literal.level, xpToLevel: state.comp.literal.xpToLevel },
+          inferencial: { level: state.comp.inferencial.level, xpToLevel: state.comp.inferencial.xpToLevel },
+          critico: { level: state.comp.critico.level, xpToLevel: state.comp.critico.xpToLevel }
+        },
         badges: state.badges,
         casos_resueltos: state.casesSolved
       })
@@ -727,11 +758,13 @@ async function saveProgress(){
 
 function hydrateStateFromProgress(p){
   if(!p) return;
-  state.xp.literal = p.xp_literal || 0;
-  state.xp.inferencial = p.xp_inferencial || 0;
-  state.xp.critico = p.xp_critico || 0;
-  state.level = p.nivel || 1;
-  state.xpToLevel = p.xp_to_level || 30;
+  const niveles = p.competencias_nivel || {};
+  ['literal', 'inferencial', 'critico'].forEach(comp => {
+    const saved = niveles[comp];
+    state.comp[comp].xp = p['xp_' + comp] || 0;
+    state.comp[comp].level = (saved && saved.level) || 1;
+    state.comp[comp].xpToLevel = (saved && saved.xpToLevel) || 30;
+  });
   state.badges = Array.isArray(p.badges) ? p.badges : [];
   state.casesSolved = p.casos_resueltos || 0;
   updateBoard();
