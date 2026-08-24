@@ -36,10 +36,41 @@ const RESPONSE_TOOL = {
         type: ['string', 'null'],
         description: 'Texto completo del caso nuevo (pista + pregunta), o null si este turno no presenta un caso nuevo.'
       },
+      infografia: {
+        type: ['object', 'null'],
+        description: 'Datos de una infografía (texto discontinuo) para este caso, o null si el caso es un texto continuo normal sin infografía.',
+        properties: {
+          titulo: { type: 'string' },
+          tipo: { type: 'string', enum: ['barras', 'cifras_clave', 'tabla'] },
+          fuente_ficticia: {
+            type: 'string',
+            description: 'Atribución ficticia breve (ej. "Estudio municipal 2024"), nunca una fuente u organización real.'
+          },
+          datos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                etiqueta: { type: 'string' },
+                valor: { type: 'number' },
+                unidad: { type: ['string', 'null'] }
+              },
+              required: ['etiqueta', 'valor', 'unidad']
+            },
+            minItems: 2,
+            maxItems: 6
+          }
+        },
+        required: ['titulo', 'tipo', 'fuente_ficticia', 'datos']
+      },
       options: {
         type: 'array',
         items: { type: 'string' },
         description: 'Exactamente 4 opciones (A-D) si case_text no es null. Arreglo vacío [] si case_text es null.'
+      },
+      requiere_justificacion: {
+        type: 'boolean',
+        description: 'true si, además de elegir una opción, el estudiante debe escribir una justificación obligatoria para esta pregunta (aprox. 1 de cada 10 preguntas). false en cualquier otro caso, incluyendo turnos de retroalimentación sin pregunta nueva.'
       },
       state_update: {
         type: 'object',
@@ -60,7 +91,7 @@ const RESPONSE_TOOL = {
         required: ['xp_gain', 'competency_focus', 'badge_earned', 'case_solved']
       }
     },
-    required: ['feedback', 'case_text', 'options', 'state_update'],
+    required: ['feedback', 'case_text', 'infografia', 'options', 'requiere_justificacion', 'state_update'],
     // Regla condicional: si case_text es un string (hay caso nuevo), "options" debe
     // tener exactamente 4 elementos. Si case_text es null, "options" debe estar vacío.
     // Esto ata estructuralmente la presencia de una pregunta a sus 4 opciones.

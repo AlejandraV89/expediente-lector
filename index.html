@@ -230,6 +230,51 @@
   }
   .opt-btn:hover{border-color:var(--amber);}
   .opt-btn:disabled{opacity:0.5; cursor:default;}
+  .opt-selected{
+    border-color:var(--amber) !important;
+    background:#fdf3e7 !important;
+    box-shadow:0 0 0 1px var(--amber);
+  }
+  .justify-block{
+    max-width:88%;
+    align-self:flex-start;
+    background:#fffdf6;
+    border:1px solid var(--amber-dark);
+    border-radius:3px;
+    padding:14px;
+    margin-top:4px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .justify-label{
+    font-size:12px;
+    color:var(--amber-dark);
+    font-weight:600;
+  }
+  .justify-textarea{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    padding:10px;
+    border:1px solid var(--paper-2);
+    border-radius:3px;
+    background:#fffdf6;
+    resize:vertical;
+  }
+  .justify-submit{
+    align-self:flex-end;
+    background:var(--ink);
+    color:var(--paper);
+    border:none;
+    border-radius:3px;
+    padding:9px 16px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    font-weight:700;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .justify-submit:disabled{opacity:0.4; cursor:default;}
 
   .composer{
     display:flex;
@@ -503,6 +548,11 @@ const SYSTEM_PROMPT_BASE = `Eres "Detective Vega", un investigador experto que r
 
 Reglas del flujo de cada caso:
 1. Presenta un texto breve (60-150 palabras, puedes inventarlo o basarte en un tema cotidiano/social/científico) enmarcado como "una pista" o "un documento del caso".
+1b. Variación de tipo de texto — INFOGRAFÍAS: en las Pruebas Saber 11 real, además de textos continuos (prosa), también aparecen "textos discontinuos": infografías, tablas y cifras. Aproximadamente 1 de cada 4 o 5 casos debe presentarse como infografía en vez de texto continuo, para entrenar esa misma habilidad. Cuando decidas presentar una infografía:
+   - Llena el campo "infografia" con un título breve, un tipo ("barras", "cifras_clave" o "tabla"), una fuente FICTICIA (ej. "Encuesta interna del barrio, 2024" — nunca una fuente, organización o estudio real), y entre 2 y 6 datos (etiqueta + valor + unidad).
+   - El campo "case_text" en este caso debe ser breve: solo el encabezado narrativo (ej. "Detective Vega encuentra este reporte pegado en la pared...") y la pregunta. NUNCA repitas los números o etiquetas de la infografía dentro de "case_text" — esos datos ya se muestran aparte, gracias al campo "infografia".
+   - La pregunta sobre una infografía debe pedir leer, relacionar o interpretar los datos (ej. "¿qué categoría tiene el valor más alto?", "¿qué se puede inferir al comparar X con Y?"), y sigue aplicando a las mismas tres competencias (literal/inferencial/crítico).
+   - Cuando el caso NO sea una infografía, deja "infografia" en null.
 2. Haz UNA pregunta de opción múltiple con 4 opciones (A-D) sobre ese texto. Debes alternar entre las tres competencias de lectura crítica del ICFES:
    - literal: identificar información explícita en el texto.
    - inferencial: relacionar partes del texto para deducir algo no dicho explícitamente.
@@ -512,6 +562,11 @@ Reglas del flujo de cada caso:
    - Si acierta: en el campo "feedback" celebra brevemente en personaje y explica en una frase por qué esa era la respuesta correcta, reflejando la ganancia de xp en la competencia trabajada. Además, en ese MISMO turno, incluye en el campo "case_text" el siguiente caso completo (nuevo texto + pregunta) con sus "options". state_update.case_solved = true.
    - Si falla, y es su PRIMER intento en esta pregunta: NO reveles la respuesta correcta. En el campo "feedback" incluye SOLO una pregunta guía tipo socrático que lo lleve a releer una parte específica del texto (ej: "vuelve a leer la segunda oración, ¿qué relación hay entre X y Y?"). Deja "case_text" y "options" en null — no avances de caso todavía. state_update.case_solved = false.
    - Si falla una SEGUNDA vez en la misma pregunta: en el campo "feedback" explica la respuesta correcta de forma breve y clara, sin regañar. En ese MISMO turno, incluye en "case_text" el siguiente caso completo con sus "options". state_update.case_solved = true.
+3b. Preguntas con justificación obligatoria: aproximadamente 1 de cada 10 preguntas debe marcarse con requiere_justificacion = true. En esas preguntas, el estudiante elige una opción Y escribe una justificación en un campo de texto; ambas cosas llegan juntas en su respuesta (verás algo como "Respuesta seleccionada: ... Justificación del estudiante: ..."). Al evaluar esa respuesta:
+   - Evalúa DOS cosas en el feedback: si la opción elegida es correcta, Y si la justificación que escribió realmente se apoya en el texto (no basta con que la opción sea correcta si la justificación es vaga, inventada, o no hace referencia al texto).
+   - Si la opción es correcta pero la justificación es débil o no cita nada del texto, trátalo como si fuera un fallo del primer intento: no avances de caso, y en el feedback pide específicamente que fundamente su respuesta citando o parafraseando una parte del texto.
+   - Si tanto la opción como la justificación son sólidas, celebra ambas cosas explícitamente (no solo la opción correcta) y avanza normalmente.
+   - En cualquier otra pregunta (la gran mayoría), requiere_justificacion debe ser false.
 4. Ajusta la dificultad: si el estudiante lleva 2 o más aciertos seguidos en una competencia, el siguiente texto de esa competencia debe ser un poco más exigente (frases más largas, relaciones más sutiles). Si falla, baja un poco la exigencia del siguiente texto de esa competencia.
 5. Otorga una credencial (badge_earned) ocasionalmente cuando el estudiante muestre un logro notable (ej: 3 aciertos seguidos en crítico-intertextual, o resolver un caso difícil sin ayuda). No lo hagas en cada turno, solo cuando sea significativo. El nombre debe sonar a credencial de detective, ej: "Lector de pistas ocultas", "Ojo crítico".
 6. Si el estudiante responde con solo una letra (ej. "B" o "b)") en vez del texto completo de la opción, usa la sección "Referencia interna" que aparece al final de tus instrucciones del sistema (no en el historial de la conversación) para saber a qué opción corresponde esa letra. NUNCA le pidas al estudiante que te repita el texto completo de una opción.
@@ -589,26 +644,155 @@ function showToast(text){
 
 let activeOptionsWrap = null;
 
-function renderOptions(options){
+function renderInfografia(info){
+  if(!info || !Array.isArray(info.datos) || info.datos.length === 0) return;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'background:#fffdf6; border:1px solid var(--paper-2); border-radius:3px; padding:16px 18px; margin-top:-6px; margin-bottom:14px; max-width:88%;';
+
+  const title = document.createElement('div');
+  title.style.cssText = "font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#6b6552; margin-bottom:12px;";
+  title.textContent = '[GRÁFICO] ' + (info.titulo || 'Infografía');
+  wrap.appendChild(title);
+
+  const maxVal = Math.max(...info.datos.map(d => Number(d.valor) || 0), 1);
+
+  if(info.tipo === 'cifras_clave'){
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:flex; flex-wrap:wrap; gap:14px;';
+    info.datos.forEach(d => {
+      const cell = document.createElement('div');
+      cell.style.cssText = 'flex:1; min-width:100px;';
+      cell.innerHTML =
+        '<div style="font-family:\'JetBrains Mono\',monospace; font-size:22px; font-weight:700; color:var(--amber);">' +
+        (d.valor ?? '') + (d.unidad ? '<span style="font-size:13px;">' + d.unidad + '</span>' : '') +
+        '</div><div style="font-size:11.5px; color:#4a4638; margin-top:2px;">' + (d.etiqueta || '') + '</div>';
+      grid.appendChild(cell);
+    });
+    wrap.appendChild(grid);
+  } else if(info.tipo === 'tabla'){
+    const table = document.createElement('div');
+    info.datos.forEach((d, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; justify-content:space-between; padding:6px 0; font-size:13px;' +
+        (i < info.datos.length - 1 ? ' border-bottom:1px dashed var(--paper-2);' : '');
+      row.innerHTML = '<span>' + (d.etiqueta || '') + '</span><span style="font-family:\'JetBrains Mono\',monospace; font-weight:700;">' +
+        (d.valor ?? '') + (d.unidad ? ' ' + d.unidad : '') + '</span>';
+      table.appendChild(row);
+    });
+    wrap.appendChild(table);
+  } else {
+    // barras (predeterminado)
+    info.datos.forEach(d => {
+      const val = Number(d.valor) || 0;
+      const pct = Math.max(4, Math.round((val / maxVal) * 100));
+      const row = document.createElement('div');
+      row.style.cssText = 'margin-bottom:10px;';
+      row.innerHTML =
+        '<div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">' +
+        '<span>' + (d.etiqueta || '') + '</span>' +
+        '<span style="font-family:\'JetBrains Mono\',monospace; font-weight:700;">' + val + (d.unidad ? ' ' + d.unidad : '') + '</span>' +
+        '</div>' +
+        '<div style="height:9px; background:var(--paper-2); border-radius:4px; overflow:hidden;">' +
+        '<div style="height:100%; width:' + pct + '%; background:var(--teal);"></div>' +
+        '</div>';
+      wrap.appendChild(row);
+    });
+  }
+
+  if(info.fuente_ficticia){
+    const source = document.createElement('div');
+    source.style.cssText = 'font-size:10.5px; color:#8a8674; font-style:italic; margin-top:12px;';
+    source.textContent = 'Fuente: ' + info.fuente_ficticia + ' (caso ficticio con fines educativos)';
+    wrap.appendChild(source);
+  }
+
+  threadEl.appendChild(wrap);
+}
+
+let activeJustifyBlock = null; // referencia al bloque de justificación activo, si aplica
+
+function renderOptions(options, requiresJustification){
   const wrap = document.createElement('div');
   wrap.className = 'options';
+  let selectedText = null;
+
   options.forEach(optText => {
     const btn = document.createElement('button');
     btn.className = 'opt-btn';
     btn.textContent = optText;
-    btn.onclick = () => {
-      Array.from(wrap.querySelectorAll('button')).forEach(b => b.disabled = true);
-      sendTurn(optText);
-    };
+
+    if(requiresJustification){
+      // Modo justificación: el clic solo selecciona (no envía). El envío real
+      // ocurre con el botón "Enviar respuesta" de abajo, una vez también haya
+      // una justificación escrita.
+      btn.onclick = () => {
+        Array.from(wrap.querySelectorAll('.opt-btn')).forEach(b => b.classList.remove('opt-selected'));
+        btn.classList.add('opt-selected');
+        selectedText = optText;
+        updateJustifySubmitState();
+      };
+    } else {
+      // Modo normal: el clic envía la respuesta de inmediato, como siempre.
+      btn.onclick = () => {
+        Array.from(wrap.querySelectorAll('button')).forEach(b => b.disabled = true);
+        sendTurn(optText);
+      };
+    }
     wrap.appendChild(btn);
   });
   threadEl.appendChild(wrap);
   activeOptionsWrap = wrap;
+
+  if(!requiresJustification){
+    activeJustifyBlock = null;
+    return;
+  }
+
+  // ---- Bloque de justificación obligatoria ----
+  const justifyBlock = document.createElement('div');
+  justifyBlock.className = 'justify-block';
+  justifyBlock.innerHTML =
+    '<div class="justify-label">Esta pregunta requiere justificación — elige una opción arriba y explica tu razonamiento:</div>' +
+    '<textarea class="justify-textarea" placeholder="Justifica tu respuesta con base en el texto..." rows="3"></textarea>' +
+    '<button class="justify-submit" disabled>Enviar respuesta</button>';
+  threadEl.appendChild(justifyBlock);
+  activeJustifyBlock = justifyBlock;
+
+  const textarea = justifyBlock.querySelector('.justify-textarea');
+  const submitBtn = justifyBlock.querySelector('.justify-submit');
+
+  function updateJustifySubmitState(){
+    const hasSelection = selectedText !== null;
+    const hasJustification = textarea.value.trim().length >= 15;
+    submitBtn.disabled = !(hasSelection && hasJustification);
+  }
+  textarea.addEventListener('input', updateJustifySubmitState);
+  submitBtn.onclick = () => {
+    if(submitBtn.disabled) return;
+    Array.from(wrap.querySelectorAll('.opt-btn')).forEach(b => b.disabled = true);
+    textarea.disabled = true;
+    submitBtn.disabled = true;
+    const combined = 'Respuesta seleccionada: ' + selectedText + '\nJustificación del estudiante: ' + textarea.value.trim();
+    sendTurn(combined);
+  };
 }
 
 function reenableActiveOptions(){
   if(activeOptionsWrap){
-    Array.from(activeOptionsWrap.querySelectorAll('button')).forEach(b => b.disabled = false);
+    Array.from(activeOptionsWrap.querySelectorAll('.opt-btn')).forEach(b => {
+      b.disabled = false;
+      b.classList.remove('opt-selected');
+    });
+  }
+  if(activeJustifyBlock){
+    // Reiniciamos el campo de texto para que escriba una justificación nueva,
+    // acorde a la pregunta guía que acaba de recibir.
+    const textarea = activeJustifyBlock.querySelector('.justify-textarea');
+    const submitBtn = activeJustifyBlock.querySelector('.justify-submit');
+    textarea.value = '';
+    textarea.disabled = false;
+    submitBtn.disabled = true;
   }
 }
 
@@ -877,13 +1061,16 @@ async function sendTurn(userText){
       // El caso nuevo se agrega DEBAJO, sin mover el scroll — el estudiante lo
       // encuentra al bajar por su cuenta, después de leer el feedback.
       addMessage(parsed.case_text, 'bot', { scrollToBottom: false });
+      if(parsed.infografia){
+        renderInfografia(parsed.infografia);
+      }
     }
     if(!hasFeedback && !hasCase){
       addMessage('(sin contenido)', 'bot');
     }
 
     if(hasOptions){
-      renderOptions(parsed.options);
+      renderOptions(parsed.options, !!parsed.requiere_justificacion);
       if(!hasFeedback){
         // No hubo feedback que proteger en este turno (ej. el primer caso de la sesión):
         // sí llevamos la vista hasta las opciones nuevas.
