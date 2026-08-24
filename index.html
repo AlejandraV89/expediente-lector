@@ -401,8 +401,7 @@
     <div class="case">
       <div id="loginZone" class="login-card">
         <div class="login-card-inner">
-          <p style="font-size:13px; color:#4a4638; margin:0; text-align:center;">Para guardar tu progreso entre sesiones, ingresa tu nombre y correo. Solo se usan para identificar tu expediente, no se comparten con terceros.</p>
-          <input type="text" id="loginNombre" placeholder="Tu nombre completo" />
+          <p style="font-size:13px; color:#4a4638; margin:0; text-align:center;">Para guardar tu progreso entre sesiones, ingresa tu correo. Solo se usa para identificar tu expediente, no se comparte con terceros.</p>
           <input type="email" id="loginCorreo" placeholder="Tu correo" />
           <div id="loginError" style="display:none; color:var(--red); font-size:12.5px; text-align:center;"></div>
           <button class="start-btn" id="loginBtn">Entrar al expediente</button>
@@ -555,7 +554,6 @@ const startBtn = document.getElementById('startBtn');
 const starterZone = document.getElementById('starterZone');
 const toastEl = document.getElementById('toast');
 const loginZone = document.getElementById('loginZone');
-const loginNombre = document.getElementById('loginNombre');
 const loginCorreo = document.getElementById('loginCorreo');
 const loginError = document.getElementById('loginError');
 const loginBtn = document.getElementById('loginBtn');
@@ -915,15 +913,9 @@ async function sendTurn(userText){
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 loginBtn.addEventListener('click', async () => {
-  const nombre = loginNombre.value.trim();
   const correo = loginCorreo.value.trim().toLowerCase();
   loginError.style.display = 'none';
 
-  if(nombre.length < 2){
-    loginError.textContent = 'Escribe tu nombre completo.';
-    loginError.style.display = 'block';
-    return;
-  }
   if(!EMAIL_REGEX.test(correo)){
     loginError.textContent = 'Escribe un correo válido.';
     loginError.style.display = 'block';
@@ -932,6 +924,11 @@ loginBtn.addEventListener('click', async () => {
 
   loginBtn.disabled = true;
   loginBtn.textContent = 'Entrando...';
+
+  // Derivamos un nombre legible a partir de la parte antes del "@" del correo,
+  // ya que no le pedimos el nombre por separado (ej. "maira.perez24" -> "Maira.perez24").
+  const localPart = correo.split('@')[0];
+  const nombre = localPart.charAt(0).toUpperCase() + localPart.slice(1);
 
   state.nombre = nombre;
   state.correo = correo;
@@ -943,7 +940,7 @@ loginBtn.addEventListener('click', async () => {
   document.getElementById('thread').style.display = 'flex';
 
   if(existing && existing.casos_resueltos > 0){
-    addSystemNote('Bienvenido de vuelta, ' + nombre + '. Continuamos donde quedaste.');
+    addSystemNote('Bienvenido de vuelta. Continuamos donde quedaste.');
     starterZone.style.display = 'flex';
   } else {
     starterZone.style.display = 'flex';
