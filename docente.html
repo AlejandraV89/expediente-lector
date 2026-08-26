@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel Docente — Expediente Lector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14181f; --ink-2:#1c222c; --paper:#f3edda; --paper-2:#e9e1c8;
+    --text-on-ink:#e8e3d3; --text-muted:#9a9686;
+    --amber:#c9722e; --teal:#3e7c7c; --red:#a63a3a; --green:#4a7c3e;
+    --border-ink: rgba(232,227,211,0.15);
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--ink); color:var(--text-on-ink); font-family:'Inter',sans-serif; min-height:100vh; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:28px 20px 60px; }
+  header{ display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--border-ink); padding-bottom:16px; margin-bottom:24px; flex-wrap:wrap; gap:8px; }
+  header h1{ font-family:'Special Elite',monospace; font-size:22px; font-weight:400; margin:0; color:var(--paper); }
+  header .sub{ font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; }
+
+  /* ---- Login ---- */
+  .login-wrap{ display:flex; justify-content:center; align-items:center; min-height:50vh; }
+  .login-card{ width:100%; max-width:360px; background:var(--ink-2); border:1px solid var(--border-ink); border-radius:6px; padding:26px; display:flex; flex-direction:column; gap:12px; }
+  .login-card p{ font-size:13px; color:var(--text-muted); margin:0; text-align:center; }
+  .login-card input{ padding:11px 12px; border:1px solid var(--border-ink); border-radius:3px; background:var(--ink); color:var(--text-on-ink); font-size:14px; }
+  .login-card button{ background:var(--amber); color:var(--ink); border:none; border-radius:3px; padding:11px; font-weight:700; font-family:'JetBrains Mono',monospace; text-transform:uppercase; font-size:12px; cursor:pointer; }
+  .login-card button:disabled{ opacity:0.5; cursor:default; }
+  .login-error{ color:var(--red); font-size:12.5px; text-align:center; display:none; }
+
+  /* ---- Resumen ---- */
+  .summary{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:14px; margin-bottom:26px; }
+  .summary .card{ background:var(--ink-2); border:1px solid var(--border-ink); border-radius:4px; padding:16px; }
+  .summary .card .label{ font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); margin-bottom:6px; }
+  .summary .card .value{ font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:700; color:var(--amber); }
+
+  /* ---- Tabla ---- */
+  .table-wrap{ background:var(--paper); border-radius:4px; overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; color:#2a2620; min-width:820px; }
+  th{ background:var(--ink); color:var(--paper); text-align:left; padding:10px 12px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; user-select:none; white-space:nowrap; }
+  th:hover{ background:var(--ink-2); }
+  th .arrow{ opacity:0.5; font-size:10px; }
+  td{ padding:10px 12px; border-bottom:1px solid var(--paper-2); white-space:nowrap; }
+  tr:hover td{ background:#fffdf6; }
+  .comp-val{ font-family:'JetBrains Mono',monospace; }
+  .weak{ color:var(--red); font-weight:700; }
+  .badge-pill{ display:inline-block; background:var(--ink); color:var(--amber); font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 7px; border-radius:3px; margin:1px; }
+  .empty-state{ padding:40px; text-align:center; color:#6b6552; }
+  .refresh-btn{ background:var(--ink-2); color:var(--text-on-ink); border:1px solid var(--border-ink); border-radius:3px; padding:8px 14px; font-size:12px; cursor:pointer; margin-bottom:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Panel docente</h1>
+      <div class="sub">Expediente lector — progreso de estudiantes</div>
+    </div>
+  </header>
+
+  <div id="loginZone" class="login-wrap">
+    <div class="login-card">
+      <p>Este panel es solo para el docente. Ingresa la contraseña para continuar.</p>
+      <input type="password" id="pwInput" placeholder="Contraseña" />
+      <div class="login-error" id="pwError"></div>
+      <button id="pwBtn">Entrar</button>
+    </div>
+  </div>
+
+  <div id="dashboardZone" style="display:none;">
+    <div class="summary" id="summaryZone"></div>
+    <button class="refresh-btn" id="refreshBtn">Actualizar datos</button>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-key="nombre">Estudiante <span class="arrow"></span></th>
+            <th data-key="correo">Correo <span class="arrow"></span></th>
+            <th data-key="xp_literal">Literal <span class="arrow"></span></th>
+            <th data-key="xp_inferencial">Inferencial <span class="arrow"></span></th>
+            <th data-key="xp_critico">Crítico <span class="arrow"></span></th>
+            <th data-key="nivel">Nivel <span class="arrow"></span></th>
+            <th data-key="casos_resueltos">Casos <span class="arrow"></span></th>
+            <th data-key="actualizado_en">Última actividad <span class="arrow"></span></th>
+            <th>Insignias</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let students = [];
+let sortKey = 'actualizado_en';
+let sortDir = -1; // -1 desc, 1 asc
+let currentPassword = '';
+
+const loginZone = document.getElementById('loginZone');
+const dashboardZone = document.getElementById('dashboardZone');
+const pwInput = document.getElementById('pwInput');
+const pwBtn = document.getElementById('pwBtn');
+const pwError = document.getElementById('pwError');
+
+async function fetchStudents(password){
+  const resp = await fetch('/api/docente', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  const data = await resp.json();
+  if(!resp.ok) throw new Error(data.error || 'Error desconocido');
+  return data.estudiantes;
+}
+
+pwBtn.addEventListener('click', async () => {
+  const password = pwInput.value;
+  if(!password) return;
+  pwBtn.disabled = true;
+  pwBtn.textContent = 'Verificando...';
+  pwError.style.display = 'none';
+  try{
+    students = await fetchStudents(password);
+    currentPassword = password;
+    loginZone.style.display = 'none';
+    dashboardZone.style.display = 'block';
+    renderDashboard();
+  } catch(err){
+    pwError.textContent = err.message;
+    pwError.style.display = 'block';
+  } finally {
+    pwBtn.disabled = false;
+    pwBtn.textContent = 'Entrar';
+  }
+});
+pwInput.addEventListener('keydown', e => { if(e.key === 'Enter') pwBtn.click(); });
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  try{
+    students = await fetchStudents(currentPassword);
+    renderDashboard();
+  } catch(err){
+    alert('No se pudo actualizar: ' + err.message);
+  }
+});
+
+document.querySelectorAll('th[data-key]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if(sortKey === key){ sortDir *= -1; } else { sortKey = key; sortDir = 1; }
+    renderDashboard();
+  });
+});
+
+function weakestCompetency(s){
+  const comps = [['literal', s.xp_literal], ['inferencial', s.xp_inferencial], ['critico', s.xp_critico]];
+  comps.sort((a, b) => a[1] - b[1]);
+  return comps[0][0]; // la de menor XP
+}
+
+function renderDashboard(){
+  // Resumen del curso
+  const n = students.length || 1;
+  const avg = (field) => Math.round(students.reduce((sum, s) => sum + (s[field] || 0), 0) / n);
+  document.getElementById('summaryZone').innerHTML = `
+    <div class="card"><div class="label">Estudiantes</div><div class="value">${students.length}</div></div>
+    <div class="card"><div class="label">Promedio Literal</div><div class="value">${avg('xp_literal')}</div></div>
+    <div class="card"><div class="label">Promedio Inferencial</div><div class="value">${avg('xp_inferencial')}</div></div>
+    <div class="card"><div class="label">Promedio Crítico</div><div class="value">${avg('xp_critico')}</div></div>
+  `;
+
+  // Orden
+  const sorted = [...students].sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if(typeof av === 'string') av = av.toLowerCase();
+    if(typeof bv === 'string') bv = bv.toLowerCase();
+    if(av < bv) return -1 * sortDir;
+    if(av > bv) return 1 * sortDir;
+    return 0;
+  });
+
+  const tbody = document.getElementById('tableBody');
+  if(sorted.length === 0){
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state">Todavía no hay estudiantes registrados.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(s => {
+    const weak = weakestCompetency(s);
+    const fecha = s.actualizado_en ? new Date(s.actualizado_en).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+    const badges = Array.isArray(s.badges) && s.badges.length > 0
+      ? s.badges.map(b => `<span class="badge-pill">${escapeHtml(b)}</span>`).join('')
+      : '<span style="color:#8a8674; font-size:11.5px;">ninguna</span>';
+    return `<tr>
+      <td>${escapeHtml(s.nombre || '')}</td>
+      <td style="font-size:12px; color:#4a4638;">${escapeHtml(s.correo || '')}</td>
+      <td class="comp-val ${weak === 'literal' ? 'weak' : ''}">${s.xp_literal ?? 0}</td>
+      <td class="comp-val ${weak === 'inferencial' ? 'weak' : ''}">${s.xp_inferencial ?? 0}</td>
+      <td class="comp-val ${weak === 'critico' ? 'weak' : ''}">${s.xp_critico ?? 0}</td>
+      <td class="comp-val">${s.nivel ?? 1}</td>
+      <td class="comp-val">${s.casos_resueltos ?? 0}</td>
+      <td style="font-size:12px;">${fecha}</td>
+      <td>${badges}</td>
+    </tr>`;
+  }).join('');
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
