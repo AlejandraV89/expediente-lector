@@ -49,6 +49,25 @@
   .badge-pill{ display:inline-block; background:var(--ink); color:var(--amber); font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 7px; border-radius:3px; margin:1px; }
   .empty-state{ padding:40px; text-align:center; color:#6b6552; }
   .refresh-btn{ background:var(--ink-2); color:var(--text-on-ink); border:1px solid var(--border-ink); border-radius:3px; padding:8px 14px; font-size:12px; cursor:pointer; margin-bottom:14px; }
+
+  /* ---- Pestañas ---- */
+  .tabs{ display:flex; gap:6px; margin-bottom:18px; }
+  .tab-btn{ background:transparent; color:var(--text-muted); border:1px solid var(--border-ink); border-radius:3px; padding:8px 16px; font-size:13px; cursor:pointer; }
+  .tab-btn.active{ background:var(--amber); color:var(--ink); border-color:var(--amber); font-weight:600; }
+
+  /* ---- Justificaciones ---- */
+  .filter-row{ display:flex; gap:10px; margin-bottom:14px; align-items:center; }
+  .filter-row input{ flex:1; max-width:320px; padding:9px 12px; border:1px solid var(--border-ink); border-radius:3px; background:var(--ink-2); color:var(--text-on-ink); font-size:13px; }
+  .just-row{ cursor:pointer; }
+  .just-row td{ white-space:normal; }
+  .acertada-si{ color:var(--green); font-weight:700; }
+  .acertada-no{ color:var(--red); font-weight:700; }
+  .just-detail{ display:none; background:#fffdf6; }
+  .just-detail.open{ display:table-row; }
+  .just-detail td{ padding:16px 18px; white-space:normal; line-height:1.6; }
+  .just-detail .field-label{ font-family:'JetBrains Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; color:#8a8674; margin-top:10px; margin-bottom:3px; }
+  .just-detail .field-label:first-child{ margin-top:0; }
+  .truncate{ max-width:280px; overflow:hidden; text-overflow:ellipsis; }
 </style>
 </head>
 <body>
@@ -71,33 +90,62 @@
 
   <div id="dashboardZone" style="display:none;">
     <div class="summary" id="summaryZone"></div>
-    <button class="refresh-btn" id="refreshBtn">Actualizar datos</button>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th data-key="nombre">Estudiante <span class="arrow"></span></th>
-            <th data-key="correo">Correo <span class="arrow"></span></th>
-            <th data-key="xp_literal">Literal <span class="arrow"></span></th>
-            <th data-key="xp_inferencial">Inferencial <span class="arrow"></span></th>
-            <th data-key="xp_critico">Crítico <span class="arrow"></span></th>
-            <th data-key="nivel">Nivel <span class="arrow"></span></th>
-            <th data-key="casos_resueltos">Casos <span class="arrow"></span></th>
-            <th data-key="actualizado_en">Última actividad <span class="arrow"></span></th>
-            <th>Insignias</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-      </table>
+    <div class="tabs">
+      <button class="tab-btn active" id="tabEstudiantes">Estudiantes</button>
+      <button class="tab-btn" id="tabJustificaciones">Justificaciones</button>
+      <button class="refresh-btn" id="refreshBtn" style="margin-bottom:0;">Actualizar datos</button>
+    </div>
+
+    <div id="viewEstudiantes">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-key="nombre">Estudiante <span class="arrow"></span></th>
+              <th data-key="correo">Correo <span class="arrow"></span></th>
+              <th data-key="xp_literal">Literal <span class="arrow"></span></th>
+              <th data-key="xp_inferencial">Inferencial <span class="arrow"></span></th>
+              <th data-key="xp_critico">Crítico <span class="arrow"></span></th>
+              <th data-key="nivel">Nivel <span class="arrow"></span></th>
+              <th data-key="casos_resueltos">Casos <span class="arrow"></span></th>
+              <th data-key="actualizado_en">Última actividad <span class="arrow"></span></th>
+              <th>Insignias</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="viewJustificaciones" style="display:none;">
+      <div class="filter-row">
+        <input type="text" id="justFilter" placeholder="Filtrar por correo del estudiante..." />
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Estudiante</th>
+              <th>Opción elegida</th>
+              <th>Justificación (resumen)</th>
+              <th>Acertada</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody id="justBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
 let students = [];
+let justifications = [];
 let sortKey = 'actualizado_en';
 let sortDir = -1; // -1 desc, 1 asc
 let currentPassword = '';
+let openJustId = null;
 
 const loginZone = document.getElementById('loginZone');
 const dashboardZone = document.getElementById('dashboardZone');
@@ -105,7 +153,7 @@ const pwInput = document.getElementById('pwInput');
 const pwBtn = document.getElementById('pwBtn');
 const pwError = document.getElementById('pwError');
 
-async function fetchStudents(password){
+async function fetchData(password){
   const resp = await fetch('/api/docente', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -113,7 +161,7 @@ async function fetchStudents(password){
   });
   const data = await resp.json();
   if(!resp.ok) throw new Error(data.error || 'Error desconocido');
-  return data.estudiantes;
+  return data;
 }
 
 pwBtn.addEventListener('click', async () => {
@@ -123,11 +171,14 @@ pwBtn.addEventListener('click', async () => {
   pwBtn.textContent = 'Verificando...';
   pwError.style.display = 'none';
   try{
-    students = await fetchStudents(password);
+    const data = await fetchData(password);
+    students = data.estudiantes || [];
+    justifications = data.justificaciones || [];
     currentPassword = password;
     loginZone.style.display = 'none';
     dashboardZone.style.display = 'block';
     renderDashboard();
+    renderJustificaciones();
   } catch(err){
     pwError.textContent = err.message;
     pwError.style.display = 'block';
@@ -140,12 +191,36 @@ pwInput.addEventListener('keydown', e => { if(e.key === 'Enter') pwBtn.click(); 
 
 document.getElementById('refreshBtn').addEventListener('click', async () => {
   try{
-    students = await fetchStudents(currentPassword);
+    const data = await fetchData(currentPassword);
+    students = data.estudiantes || [];
+    justifications = data.justificaciones || [];
     renderDashboard();
+    renderJustificaciones();
   } catch(err){
     alert('No se pudo actualizar: ' + err.message);
   }
 });
+
+// ---- Pestañas ----
+const tabEstudiantes = document.getElementById('tabEstudiantes');
+const tabJustificaciones = document.getElementById('tabJustificaciones');
+const viewEstudiantes = document.getElementById('viewEstudiantes');
+const viewJustificaciones = document.getElementById('viewJustificaciones');
+
+tabEstudiantes.addEventListener('click', () => {
+  tabEstudiantes.classList.add('active');
+  tabJustificaciones.classList.remove('active');
+  viewEstudiantes.style.display = 'block';
+  viewJustificaciones.style.display = 'none';
+});
+tabJustificaciones.addEventListener('click', () => {
+  tabJustificaciones.classList.add('active');
+  tabEstudiantes.classList.remove('active');
+  viewJustificaciones.style.display = 'block';
+  viewEstudiantes.style.display = 'none';
+});
+
+document.getElementById('justFilter').addEventListener('input', renderJustificaciones);
 
 document.querySelectorAll('th[data-key]').forEach(th => {
   th.addEventListener('click', () => {
@@ -206,6 +281,49 @@ function renderDashboard(){
       <td>${badges}</td>
     </tr>`;
   }).join('');
+}
+
+function renderJustificaciones(){
+  const filter = document.getElementById('justFilter').value.trim().toLowerCase();
+  const filtered = filter
+    ? justifications.filter(j => (j.correo || '').toLowerCase().includes(filter))
+    : justifications;
+
+  const tbody = document.getElementById('justBody');
+  if(filtered.length === 0){
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No hay justificaciones registradas todavía.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(j => {
+    const fecha = j.creado_en ? new Date(j.creado_en).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+    const acertadaLabel = j.acertada === true ? '<span class="acertada-si">Sí</span>' : j.acertada === false ? '<span class="acertada-no">No</span>' : '—';
+    const resumenJust = (j.justificacion_texto || '').slice(0, 70) + ((j.justificacion_texto || '').length > 70 ? '…' : '');
+    const isOpen = openJustId === j.id;
+    return `<tr class="just-row" data-id="${j.id}">
+        <td style="font-size:12px;">${escapeHtml(j.correo || '')}</td>
+        <td class="truncate">${escapeHtml(j.opcion_elegida || '')}</td>
+        <td class="truncate">${escapeHtml(resumenJust)}</td>
+        <td>${acertadaLabel}</td>
+        <td style="font-size:12px;">${fecha}</td>
+      </tr>
+      <tr class="just-detail ${isOpen ? 'open' : ''}" data-detail-for="${j.id}">
+        <td colspan="5">
+          <div class="field-label">Pregunta</div>${escapeHtml(j.pregunta || '')}
+          <div class="field-label">Opción elegida</div>${escapeHtml(j.opcion_elegida || '')}
+          <div class="field-label">Justificación del estudiante</div>${escapeHtml(j.justificacion_texto || '')}
+          <div class="field-label">Evaluación de la IA</div>${escapeHtml(j.evaluacion_ia || '(sin evaluación registrada)')}
+        </td>
+      </tr>`;
+  }).join('');
+
+  document.querySelectorAll('.just-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = row.dataset.id;
+      openJustId = openJustId === id ? null : id;
+      renderJustificaciones();
+    });
+  });
 }
 
 function escapeHtml(str){

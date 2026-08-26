@@ -43,19 +43,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `${supabaseUrl}/rest/v1/progreso?select=*&order=actualizado_en.desc`;
-    const resp = await fetch(url, {
-      headers: {
-        apikey: supabaseKey,
-        Authorization: `Bearer ${supabaseKey}`
-      }
-    });
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return res.status(resp.status).json({ error: 'Error de Supabase: ' + errText });
+    const headers = {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`
+    };
+
+    const [estudiantesResp, justificacionesResp] = await Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/progreso?select=*&order=actualizado_en.desc`, { headers }),
+      fetch(`${supabaseUrl}/rest/v1/justificaciones?select=*&order=creado_en.desc&limit=500`, { headers })
+    ]);
+
+    if (!estudiantesResp.ok) {
+      const errText = await estudiantesResp.text();
+      return res.status(estudiantesResp.status).json({ error: 'Error de Supabase (progreso): ' + errText });
     }
-    const rows = await resp.json();
-    return res.status(200).json({ estudiantes: rows });
+    if (!justificacionesResp.ok) {
+      const errText = await justificacionesResp.text();
+      return res.status(justificacionesResp.status).json({ error: 'Error de Supabase (justificaciones): ' + errText });
+    }
+
+    const estudiantes = await estudiantesResp.json();
+    const justificaciones = await justificacionesResp.json();
+    return res.status(200).json({ estudiantes, justificaciones });
   } catch (err) {
     return res.status(500).json({ error: 'Error interno: ' + err.message });
   }
