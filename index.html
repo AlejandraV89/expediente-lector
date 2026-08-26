@@ -30,7 +30,7 @@
     min-height:100vh;
   }
   .wrap{
-    max-width:1100px;
+    max-width:1320px;
     margin:0 auto;
     padding:28px 20px 60px;
   }
@@ -121,7 +121,7 @@
     color:#2a2620;
     border-radius:4px;
     padding:22px;
-    min-height:520px;
+    min-height:320px;
     display:flex;
     flex-direction:column;
     position:relative;
@@ -183,7 +183,7 @@
     padding-right:4px;
   }
   .msg{
-    max-width:88%;
+    max-width:min(88%, 620px);
     padding:12px 14px;
     border-radius:3px;
     font-size:14.5px;
@@ -214,7 +214,7 @@
     display:flex;
     flex-direction:column;
     gap:8px;
-    max-width:88%;
+    max-width:min(88%, 620px);
     align-self:flex-start;
   }
   .opt-btn{
@@ -236,7 +236,7 @@
     box-shadow:0 0 0 1px var(--amber);
   }
   .justify-block{
-    max-width:88%;
+    max-width:min(88%, 620px);
     align-self:flex-start;
     background:#fffdf6;
     border:1px solid var(--amber-dark);
@@ -531,6 +531,7 @@ const state = {
   badges: [],
   casesSolved: 0,
   lastOptions: null, // opciones de la pregunta más reciente, para referencia interna del prompt
+  lastCaseText: null, // texto de la pregunta más reciente, para registrar justificaciones
   history: [] // { role: 'user' | 'assistant', content: string } -- texto visible, no JSON crudo
 };
 
@@ -643,12 +644,13 @@ function showToast(text){
 }
 
 let activeOptionsWrap = null;
+let pendingJustification = null; // datos de la justificación en curso, hasta que llegue la evaluación del modelo
 
 function renderInfografia(info){
   if(!info || !Array.isArray(info.datos) || info.datos.length === 0) return;
 
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'background:#fffdf6; border:1px solid var(--paper-2); border-radius:3px; padding:16px 18px; margin-top:-6px; margin-bottom:14px; max-width:88%;';
+  wrap.style.cssText = 'background:#fffdf6; border:1px solid var(--paper-2); border-radius:3px; padding:16px 18px; margin-top:-6px; margin-bottom:14px; max-width:min(88%, 620px);';
 
   const title = document.createElement('div');
   title.style.cssText = "font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#6b6552; margin-bottom:12px;";
@@ -773,7 +775,15 @@ function renderOptions(options, requiresJustification){
     Array.from(wrap.querySelectorAll('.opt-btn')).forEach(b => b.disabled = true);
     textarea.disabled = true;
     submitBtn.disabled = true;
-    const combined = 'Respuesta seleccionada: ' + selectedText + '\nJustificación del estudiante: ' + textarea.value.trim();
+    const justificationText = textarea.value.trim();
+    // Guardamos estos datos aparte; una vez llegue la evaluación del modelo (el
+    // feedback y si quedó resuelto o no), se guarda el registro completo en Supabase.
+    pendingJustification = {
+      pregunta: state.lastCaseText || '(pregunta no disponible)',
+      opcion_elegida: selectedText,
+      justificacion_texto: justificationText
+    };
+    const combined = 'Respuesta seleccionada: ' + selectedText + '\nJustificación del estudiante: ' + justificationText;
     sendTurn(combined);
   };
 }
@@ -911,6 +921,26 @@ async function loadProgress(correo){
   }
 }
 
+async function saveJustification(data){
+  if(!state.correo) return;
+  try{
+    await fetch('/api/justificaciones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        correo: state.correo,
+        pregunta: data.pregunta,
+        opcion_elegida: data.opcion_elegida,
+        justificacion_texto: data.justificacion_texto,
+        evaluacion_ia: data.evaluacion_ia,
+        acertada: data.acertada
+      })
+    });
+  } catch(err){
+    console.warn('Error al guardar justificación:', err.message);
+  }
+}
+
 async function saveProgress(){
   if(!state.correo || !state.nombre) return; // aún no ha iniciado sesión
   try{
@@ -1034,6 +1064,11 @@ async function callClaude(userText){
   if(parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0){
     state.lastOptions = parsed.options;
   }
+  // Guardamos también el texto del caso más reciente, para poder registrar la
+  // pregunta exacta si el estudiante responde con una justificación.
+  if(parsed.case_text){
+    state.lastCaseText = parsed.case_text;
+  }
 
   return parsed;
 }
@@ -1048,6 +1083,18 @@ async function sendTurn(userText){
 
   try{
     const parsed = await callClaude(userText === '__inicio__' ? 'Quiero abrir mi primer caso.' : userText);
+
+    // Si este turno era la respuesta a una pregunta de justificación obligatoria,
+    // ya tenemos la evaluación del modelo (parsed.feedback) — guardamos el registro
+    // completo en Supabase de una sola vez.
+    if(pendingJustification){
+      saveJustification({
+        ...pendingJustification,
+        evaluacion_ia: parsed.feedback || null,
+        acertada: !!(parsed.state_update && parsed.state_update.case_solved)
+      });
+      pendingJustification = null;
+    }
 
     const hasFeedback = !!parsed.feedback;
     const hasCase = !!parsed.case_text;
