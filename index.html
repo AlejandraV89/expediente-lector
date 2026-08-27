@@ -183,7 +183,7 @@
     padding-right:4px;
   }
   .msg{
-    max-width:min(88%, 620px);
+    max-width:95%;
     padding:12px 14px;
     border-radius:3px;
     font-size:14.5px;
@@ -214,7 +214,7 @@
     display:flex;
     flex-direction:column;
     gap:8px;
-    max-width:min(88%, 620px);
+    max-width:95%;
     align-self:flex-start;
   }
   .opt-btn{
@@ -236,7 +236,7 @@
     box-shadow:0 0 0 1px var(--amber);
   }
   .justify-block{
-    max-width:min(88%, 620px);
+    max-width:95%;
     align-self:flex-start;
     background:#fffdf6;
     border:1px solid var(--amber-dark);
@@ -650,7 +650,7 @@ function renderInfografia(info){
   if(!info || !Array.isArray(info.datos) || info.datos.length === 0) return;
 
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'background:#fffdf6; border:1px solid var(--paper-2); border-radius:3px; padding:16px 18px; margin-top:-6px; margin-bottom:14px; max-width:min(88%, 620px);';
+  wrap.style.cssText = 'background:#fffdf6; border:1px solid var(--paper-2); border-radius:3px; padding:16px 18px; margin-top:-6px; margin-bottom:14px; max-width:95%;';
 
   const title = document.createElement('div');
   title.style.cssText = "font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#6b6552; margin-bottom:12px;";
@@ -1020,6 +1020,25 @@ function stripLeakedCode(text){
   return text;
 }
 
+// Red de seguridad adicional: aunque el prompt le pide al modelo no usar Markdown,
+// esto no siempre se cumple. En vez de depender solo de la instrucción, quitamos
+// aquí los símbolos más comunes (negrita, separadores, encabezados) para que nunca
+// lleguen a la pantalla del estudiante, sin importar qué tan bien lo siga el modelo.
+function stripMarkdownArtifacts(text){
+  if(typeof text !== 'string') return text;
+  let t = text;
+  t = t.replace(/^\s*[-*_]{3,}\s*$/gm, '');       // líneas separadoras tipo ---, ***, ___
+  t = t.replace(/\*\*(.+?)\*\*/g, '$1');           // **negrita** -> negrita
+  t = t.replace(/\*(.+?)\*/g, '$1');               // *cursiva* -> cursiva
+  t = t.replace(/^#{1,6}\s+/gm, '');               // # Encabezado -> Encabezado
+  t = t.replace(/\n{3,}/g, '\n\n');                // colapsar líneas en blanco de sobra
+  return t.trim();
+}
+
+function cleanText(text){
+  return stripMarkdownArtifacts(stripLeakedCode(text));
+}
+
 async function callClaude(userText){
   const baseMessages = state.history.map(m => ({ role: m.role, content: m.content }));
   baseMessages.push({ role: 'user', content: userText });
@@ -1048,8 +1067,8 @@ async function callClaude(userText){
   // --- Red de seguridad adicional: por si acaso el modelo, dentro de un campo de
   // texto válido, igual llega a mencionar un bloque de código (poco probable ahora,
   // pero no imposible) — lo recortamos antes de mostrarlo.
-  parsed.feedback = stripLeakedCode(parsed.feedback);
-  parsed.case_text = stripLeakedCode(parsed.case_text);
+  parsed.feedback = cleanText(parsed.feedback);
+  parsed.case_text = cleanText(parsed.case_text);
 
   // Para el historial que le mandamos de vuelta al modelo, unimos SOLO feedback + caso
   // (el texto que el estudiante realmente vio). Las opciones ya NO van aquí — viven
@@ -1062,6 +1081,7 @@ async function callClaude(userText){
   // Guardamos las opciones de la pregunta más reciente para pasarlas como referencia
   // en el próximo system prompt (ver buildSystemPrompt).
   if(parsed.options && Array.isArray(parsed.options) && parsed.options.length > 0){
+    parsed.options = parsed.options.map(opt => stripMarkdownArtifacts(opt));
     state.lastOptions = parsed.options;
   }
   // Guardamos también el texto del caso más reciente, para poder registrar la
