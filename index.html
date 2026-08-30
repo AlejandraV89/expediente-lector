@@ -1093,12 +1093,12 @@ async function callClaude(userText){
   return parsed;
 }
 
-async function sendTurn(userText){
+async function sendTurn(userText, isRetry){
   composer.style.display = 'none';
-  if(userText && userText.trim().length > 0 && userText !== '__inicio__'){
+  if(!isRetry && userText && userText.trim().length > 0 && userText !== '__inicio__'){
     addMessage(userText, 'user');
   }
-  statusLine.textContent = 'Detective Vega está pensando...';
+  statusLine.textContent = isRetry ? 'Reintentando...' : 'Detective Vega está pensando...';
   sendBtn.disabled = true;
 
   try{
@@ -1156,6 +1156,15 @@ async function sendTurn(userText){
     applyStateUpdate(parsed.state_update);
     statusLine.textContent = 'esperando tu respuesta';
   } catch(err){
+    if(!isRetry){
+      // Primer fallo: reintentamos una vez, en silencio, antes de molestar al
+      // estudiante — muchos fallos son tropiezos momentáneos de red que se
+      // resuelven solos en el segundo intento.
+      statusLine.textContent = 'Reintentando...';
+      sendBtn.disabled = false;
+      await new Promise(r => setTimeout(r, 900));
+      return sendTurn(userText, true);
+    }
     addSystemNote('Hubo un problema de conexión. Intenta enviar tu respuesta de nuevo. (' + err.message + ')');
     composer.style.display = 'flex';
     statusLine.textContent = 'error de conexión';
