@@ -984,6 +984,7 @@ function hydrateStateFromProgress(p){
 
 // ---------- Llamada a la API ----------
 async function callClaudeRaw(messages){
+  const inicio = performance.now();
   // Nota: ya no llamamos directamente a api.anthropic.com desde el navegador.
   // Llamamos a nuestro propio backend (/api/chat), que guarda la llave de forma segura.
   const response = await fetch('/api/chat', {
@@ -996,6 +997,8 @@ async function callClaudeRaw(messages){
   });
 
   const data = await response.json();
+  const duracionMs = Math.round(performance.now() - inicio);
+  console.log(`[Expediente Lector] Llamada a /api/chat: ${duracionMs}ms`);
 
   if(!response.ok){
     throw new Error(data.error || ('Error de red: ' + response.status));
@@ -1062,6 +1065,7 @@ async function callClaude(userText){
   // adicional (invisible para el estudiante), que corrija su propia respuesta.
   const needsOptionsFix = !!parsed.case_text && (!Array.isArray(parsed.options) || parsed.options.length !== 4);
   if(needsOptionsFix){
+    console.warn('[Expediente Lector] Se disparó la corrección automática de opciones (segunda llamada) — esto explica una espera más larga en este turno.');
     const correctionMessages = [
       ...baseMessages,
       { role: 'assistant', content: '[Respuesta interna con formato incompleto, descartada]' },
@@ -1112,8 +1116,15 @@ async function sendTurn(userText, isRetry){
   statusLine.textContent = isRetry ? 'Reintentando...' : 'Detective Vega está pensando...';
   sendBtn.disabled = true;
 
+  // Si la espera se alarga (por ejemplo, si se dispara la corrección automática),
+  // avisamos que sigue en proceso, para que no se sienta como que la app se colgó.
+  const avisoLargo = setTimeout(() => {
+    statusLine.textContent = 'Esto está tardando un poco más de lo normal, sigue en proceso...';
+  }, 6000);
+
   try{
     const parsed = await callClaude(userText === '__inicio__' ? 'Quiero abrir mi primer caso.' : userText);
+    clearTimeout(avisoLargo);
 
     // Si este turno era la respuesta a una pregunta de justificación obligatoria,
     // ya tenemos la evaluación del modelo (parsed.feedback) — guardamos el registro
@@ -1167,6 +1178,7 @@ async function sendTurn(userText, isRetry){
     applyStateUpdate(parsed.state_update);
     statusLine.textContent = 'esperando tu respuesta';
   } catch(err){
+    clearTimeout(avisoLargo);
     if(!isRetry){
       // Primer fallo: reintentamos una vez, en silencio, antes de molestar al
       // estudiante — muchos fallos son tropiezos momentáneos de red que se
