@@ -1035,8 +1035,19 @@ function stripMarkdownArtifacts(text){
   return t.trim();
 }
 
+// Red de seguridad adicional: el texto del caso/feedback nunca debería contener
+// líneas que empiecen con "A) ", "B) ", "C) " o "D) " — esas son exclusivas del
+// campo "options". Si el modelo las duplica ahí (como vimos que a veces pasa,
+// a pesar de la instrucción), las quitamos aquí antes de mostrarlas.
+function stripLeakedOptionLines(text){
+  if(typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  const filtered = lines.filter(line => !/^\s*[A-D]\)\s/.test(line));
+  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function cleanText(text){
-  return stripMarkdownArtifacts(stripLeakedCode(text));
+  return stripLeakedOptionLines(stripMarkdownArtifacts(stripLeakedCode(text)));
 }
 
 async function callClaude(userText){
