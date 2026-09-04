@@ -58,6 +58,12 @@
     text-transform:uppercase;
     letter-spacing:1.5px;
   }
+  #statusLine{
+    max-width:260px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
   .layout{
     display:grid;
     grid-template-columns:1fr 300px;
@@ -585,13 +591,21 @@ Los campos "feedback" y "case_text" se muestran tal cual al estudiante, SIN rend
 FORMATO DE RESPUESTA:
 Debes usar siempre la herramienta "responder_caso" para entregar tu respuesta — el sistema técnico ya te obliga a esto, no necesitas escribir JSON como texto. Simplemente llena cada campo de la herramienta según las reglas de arriba: "feedback", "case_text", "options" (arreglo vacío [] cuando no aplica, nunca null), y "state_update" con sus datos.`;
 
-function buildSystemPrompt(){
+// La parte fija del prompt (las reglas de Detective Vega) no cambia entre turnos —
+// separarla permite que el backend la marque para caché, así Anthropic no tiene
+// que reprocesarla completa en cada solicitud, lo que reduce el tiempo de respuesta.
+function buildSystemPromptStatic(){
+  return SYSTEM_PROMPT_BASE;
+}
+
+// La parte variable sí cambia en cada turno (el progreso del estudiante), por eso
+// va separada y nunca se cachea.
+function buildSystemPromptDynamic(){
   const pendingOptionsBlock = (state.lastOptions && state.lastOptions.length > 0)
     ? `\n\nReferencia interna — opciones de la pregunta que el estudiante tiene actualmente en pantalla (úsala SOLO para interpretar si el estudiante responde con una letra suelta como "B"; esto es una instrucción para ti, NUNCA la copies ni la menciones dentro de "case_text" ni "feedback"):\n${state.lastOptions.join('\n')}`
     : '';
 
-  return SYSTEM_PROMPT_BASE + `
-
+  return `
 Estado actual del investigador (úsalo para calibrar dificultad, no lo repitas literalmente al estudiante):
 - Nivel: ${overallLevel()}
 - XP literal: ${state.comp.literal.xp} (nivel ${state.comp.literal.level})
@@ -991,7 +1005,8 @@ async function callClaudeRaw(messages){
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      system: buildSystemPrompt(),
+      systemStatic: buildSystemPromptStatic(),
+      systemDynamic: buildSystemPromptDynamic(),
       messages: messages
     })
   });
@@ -1119,7 +1134,7 @@ async function sendTurn(userText, isRetry){
   // Si la espera se alarga (por ejemplo, si se dispara la corrección automática),
   // avisamos que sigue en proceso, para que no se sienta como que la app se colgó.
   const avisoLargo = setTimeout(() => {
-    statusLine.textContent = 'Esto está tardando un poco más de lo normal, sigue en proceso...';
+    statusLine.textContent = 'sigue en proceso...';
   }, 6000);
 
   try{

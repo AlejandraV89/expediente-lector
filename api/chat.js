@@ -7,8 +7,10 @@
 // Nota: esta memoria vive solo mientras la función esté "caliente" en Vercel;
 // no es un control perfecto (una función nueva reinicia el conteo), pero sí
 // frena los intentos automatizados más obvios sin necesitar una base de datos.
+// Configurable por variable de entorno para ajustarlo al tamaño real del grupo
+// (por ejemplo, si muchos estudiantes comparten la misma red/IP del colegio).
 const requestLog = new Map(); // ip -> [timestamps]
-const MAX_REQUESTS_PER_WINDOW = 15;
+const MAX_REQUESTS_PER_WINDOW = Number(process.env.RATE_LIMIT_MAX) || 200;
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutos
 
 function isRateLimited(ip){
@@ -123,7 +125,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Falta configurar ANTHROPIC_API_KEY en Vercel' });
   }
 
-  const { system, messages } = req.body;
+  const { system, systemStatic, systemDynamic, messages } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'Falta el arreglo de mensajes' });
@@ -134,10 +136,29 @@ export default async function handler(req, res) {
   const MAX_MESSAGES = 40;
   const trimmedMessages = messages.slice(-MAX_MESSAGES);
 
-  // --- Límite de longitud del system prompt, por si algo lo infla sin control ---
-  const safeSystem = (system || '').slice(0, 6000);
+  // --- Caché de prompts: la parte fija del prompt (las reglas de Detective Vega,
+  // que no cambian turno a turno) se marca para que Anthropic la reutilice entre
+  // llamadas en vez de reprocesarla cada vez — esto reduce el tiempo de respuesta.
+  // Solo la parte variable (nivel/XP actual del estudiante) va sin caché.
+  // Se mantiene compatibilidad: si el frontend todavía manda "system" como texto
+  // plano (formato anterior), se usa igual, sin caché.
+  let systemPayload;
+  if (systemStatic) {
+    systemPayload = [
+      { type: 'text', text: (systemStatic || '').slice(0, 6000), cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: (systemDynamic || '').slice(0, 1000) }
+    ];
+  } else {
+    systemPayload = (system || '').slice(0, 6000);
+  }
 
   try {
+    // Configurables sin tocar código: útil para el día de una prueba con muchos
+    // estudiantes a la vez, donde puede convenir cambiar a un modelo con más
+    // capacidad de solicitudes por minuto (ej. Haiku) sin hacer un nuevo despliegue.
+    const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+    const maxTokens = Number(process.env.CLAUDE_MAX_TOKENS) || 1000;
+
     const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -146,9 +167,9 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        system: safeSystem,
+        model: model,
+        max_tokens: maxTokens,
+        system: systemPayload,
         messages: trimmedMessages,
         tools: [RESPONSE_TOOL],
         tool_choice: { type: 'tool', name: 'responder_caso' }
